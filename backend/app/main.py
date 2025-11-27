@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .database import Base, engine
+from . import models  # <-- make sure models are imported so tables are registered
 from .routers import auth_routes, voter_routes, admin_routes, tag_routes, branding_routes
 
 # Create tables
