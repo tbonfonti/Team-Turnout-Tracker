@@ -4,14 +4,18 @@ import { apiGetDashboard, apiExportCallList } from "../api";
 export default function Dashboard() {
   const [voters, setVoters] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function loadDashboard() {
     try {
+      setLoading(true);
       const res = await apiGetDashboard();
       setVoters(res);
       setError("");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -27,11 +31,16 @@ export default function Dashboard() {
     <div className="card">
       <h2>My Dashboard</h2>
       {error && <div className="error">{error}</div>}
-      <div className="stats">
+
+      <div className="stats" style={{ alignItems: "center" }}>
         <div>Total Tagged: {total}</div>
         <div>Voted: {votedCount}</div>
         <div>Not Voted: {notVotedCount}</div>
+        <button onClick={loadDashboard} disabled={loading} style={{ marginLeft: "auto" }}>
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
       </div>
+
       <button onClick={apiExportCallList} disabled={notVotedCount === 0}>
         Export Call List (Not Voted)
       </button>

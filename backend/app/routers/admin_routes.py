@@ -142,19 +142,16 @@ def invite_user(
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
 
-    temp_password = secrets.token_urlsafe(8)
     user = User(
         email=payload.email,
         full_name=payload.full_name,
-        hashed_password=get_password_hash(temp_password),
-        is_admin=False,
+        hashed_password=get_password_hash(payload.password),
+        is_admin=payload.is_admin,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    # Attach temp password in response (not stored as plain text)
-    user.temp_password = temp_password  # type: ignore[attr-defined]
     return user
 
 

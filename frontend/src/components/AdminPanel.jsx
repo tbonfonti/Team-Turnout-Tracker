@@ -10,6 +10,7 @@ import {
 export default function AdminPanel() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
   const [inviteResult, setInviteResult] = useState(null);
   const [message, setMessage] = useState("");
 
@@ -47,10 +48,15 @@ export default function AdminPanel() {
 
   async function handleInvite(e) {
     e.preventDefault();
+    if (!inviteEmail || !invitePassword) {
+      setMessage("Email and password are required");
+      return;
+    }
     try {
-      const user = await apiInviteUser(inviteEmail, inviteName);
+      const user = await apiInviteUser(inviteEmail, inviteName, invitePassword, false);
       setInviteResult(user);
-      setMessage("User invited. Share the temporary password with them.");
+      setMessage("User created. Share the login details with them directly.");
+      setInvitePassword("");
     } catch (err) {
       setMessage(err.message);
     }
@@ -74,15 +80,14 @@ export default function AdminPanel() {
       {message && <div className="info">{message}</div>}
 
       <section>
-  <h3>Import Voter File (CSV)</h3>
-  <p>
-    Expected columns: <code>first_name</code>, <code>last_name</code>,{" "}
-    <code>address</code>, <code>voterID</code>, <code>phone</code>,{" "}
-    <code>email</code>. A single <code>name</code> column is also supported.
-  </p>
-  <input type="file" accept=".csv" onChange={handleImportVoters} />
-    </section>
-
+        <h3>Import Voter File (CSV)</h3>
+        <p>
+          Expected columns: <code>first_name</code>, <code>last_name</code>,{" "}
+          <code>address</code>, <code>voterID</code>, <code>phone</code>,{" "}
+          <code>email</code>. A single <code>name</code> column is also supported.
+        </p>
+        <input type="file" accept=".csv" onChange={handleImportVoters} />
+      </section>
 
       <section>
         <h3>Import Voted List (CSV)</h3>
@@ -98,8 +103,8 @@ export default function AdminPanel() {
       </section>
 
       <section>
-        <h3>Invite User</h3>
-        <form onSubmit={handleInvite} className="inline-form">
+        <h3>Create User</h3>
+        <form onSubmit={handleInvite} className="inline-form" style={{ flexWrap: "wrap" }}>
           <input
             type="text"
             placeholder="Full name"
@@ -112,18 +117,20 @@ export default function AdminPanel() {
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
           />
-          <button type="submit">Invite</button>
+          <input
+            type="password"
+            placeholder="Password"
+            value={invitePassword}
+            onChange={(e) => setInvitePassword(e.target.value)}
+          />
+          <button type="submit">Create User</button>
         </form>
         {inviteResult && (
           <div className="info">
             <p>
-              Invited <strong>{inviteResult.email}</strong>
+              Created user <strong>{inviteResult.email}</strong>
             </p>
-            {inviteResult.temp_password && (
-              <p>
-                Temp password: <code>{inviteResult.temp_password}</code>
-              </p>
-            )}
+            <p>Provide them the email and password you just set.</p>
           </div>
         )}
       </section>
