@@ -47,7 +47,7 @@ export default function Dashboard() {
         <tbody>
           {voters.map((v) => (
             <tr key={v.id}>
-              <td>{v.name}</td>
+              <td>{`${v.first_name} ${v.last_name}`.trim()}</td>
               <td>{v.voter_id}</td>
               <td>{v.has_voted ? "✅" : "❌"}</td>
             </tr>

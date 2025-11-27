@@ -20,11 +20,12 @@ def search_voters(
     if q:
         q_like = f"%{q}%"
         query = query.filter(
-            (Voter.name.ilike(q_like))
+            (Voter.first_name.ilike(q_like))
+            | (Voter.last_name.ilike(q_like))
             | (Voter.address.ilike(q_like))
             | (Voter.email.ilike(q_like))
             | (Voter.phone.ilike(q_like))
             | (Voter.voter_id.ilike(q_like))
         )
-    voters = query.order_by(Voter.name.asc()).limit(500).all()
+    voters = query.order_by(Voter.last_name.asc(), Voter.first_name.asc()).limit(500).all()
     return {"voters": voters}

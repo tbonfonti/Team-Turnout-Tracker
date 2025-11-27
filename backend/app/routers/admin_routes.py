@@ -16,6 +16,18 @@ from ..auth import get_password_hash
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _split_name(full_name: str):
+    full_name = (full_name or "").strip()
+    if not full_name:
+        return "", ""
+    parts = full_name.split()
+    if len(parts) == 1:
+        return parts[0], ""
+    first = " ".join(parts[:-1])
+    last = parts[-1]
+    return first, last
+
+
 @router.post("/voters/import")
 async def import_voters(
     file: UploadFile = File(...),
@@ -30,23 +42,35 @@ async def import_voters(
         voter_id = row.get("voterID") or row.get("voter_id")
         if not voter_id:
             continue
-        name = row.get("name") or f"{row.get('first_name', '').strip()} {row.get('last_name', '').strip()}".strip()
-        if not name:
+
+        # Prefer explicit first_name / last_name, fall back to single "name"
+        first_name = row.get("first_name") or row.get("FirstName") or ""
+        last_name = row.get("last_name") or row.get("LastName") or ""
+
+        if not (first_name or last_name):
+            legacy_name = row.get("name") or ""
+            first_name, last_name = _split_name(legacy_name)
+
+        if not first_name and not last_name:
+            # Can't create a voter without any name info
             continue
-        address = row.get("address", None)
-        phone = row.get("phone", None)
-        email = row.get("email", None)
+
+        address = row.get("address") or row.get("Address") or None
+        phone = row.get("phone") or row.get("Phone") or None
+        email = row.get("email") or row.get("Email") or None
 
         voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
         if voter:
-            voter.name = name
+            voter.first_name = first_name
+            voter.last_name = last_name
             voter.address = address
             voter.phone = phone
             voter.email = email
         else:
             voter = Voter(
                 voter_id=voter_id,
-                name=name,
+                first_name=first_name or "",
+                last_name=last_name or "",
                 address=address,
                 phone=phone,
                 email=email,
@@ -65,7 +89,6 @@ async def import_voted(
 ):
     contents = await file.read()
     text = contents.decode("utf-8")
-    # Expect a CSV with a column "voterID" or a simple list
     reader = csv.reader(io.StringIO(text))
     header = next(reader, None)
     voter_ids: List[str] = []
@@ -76,7 +99,6 @@ async def import_voted(
             if len(row) > idx:
                 voter_ids.append(row[idx])
     else:
-        # first line was a voter id
         if header and len(header) == 1:
             voter_ids.append(header[0])
         for row in reader:
@@ -117,8 +139,6 @@ def invite_user(payload: InviteUserRequest, db: Session = Depends(get_db), admin
     db.commit()
     db.refresh(user)
 
-    # NOTE: In a real app, email the temp_password.
-    # Here we return it so the admin can share it securely.
     user.temp_password = temp_password  # type: ignore[attr-defined]
     return user
 
@@ -143,7 +163,4 @@ async def upload_logo(
         branding = Branding(app_name="Team Turnout Tracking", logo_url=f"/static/{filename}")
         db.add(branding)
     else:
-        branding.logo_url = f"/static/{filename}"
-    db.commit()
-    db.refresh(branding)
-    return branding
+        branding.logo_url = f"/stat_

@@ -26,7 +26,7 @@ class UserOut(UserBase):
     is_admin: bool
 
     class Config:
-        orm_mode = True
+        orm_mode = True  # Pydantic v1 style; in v2 this maps to from_attributes
 
 
 class LoginRequest(BaseModel):
@@ -41,7 +41,8 @@ class InviteUserRequest(BaseModel):
 
 class VoterBase(BaseModel):
     voter_id: str
-    name: str
+    first_name: str
+    last_name: str
     address: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None

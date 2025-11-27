@@ -20,7 +20,8 @@ class Voter(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     voter_id = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, index=True, nullable=False)
+    first_name = Column(String, index=True, nullable=False)
+    last_name = Column(String, index=True, nullable=False)
     address = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
@@ -45,5 +46,4 @@ class Branding(Base):
     __tablename__ = "branding"
 
     id = Column(Integer, primary_key=True, index=True)
-    app_name = Column(String, default="Team Turnout Tracking")
-    logo_url = Column(String, nullable=True)
+    app_name = Column(String, default="Team T_

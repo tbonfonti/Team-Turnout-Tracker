@@ -62,7 +62,6 @@ def get_dashboard(db: Session = Depends(get_db), user=Depends(get_current_user))
 
 @router.get("/dashboard/export-call-list")
 def export_call_list(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    # tagged voters who have NOT voted
     tags = (
         db.query(UserVoterTag)
         .join(Voter, UserVoterTag.voter_id == Voter.id)
@@ -75,9 +74,9 @@ def export_call_list(db: Session = Depends(get_db), user=Depends(get_current_use
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["voter_id", "name", "address", "phone", "email"])
+    writer.writerow(["voter_id", "first_name", "last_name", "address", "phone", "email"])
     for v in voters:
-        writer.writerow([v.voter_id, v.name, v.address or "", v.phone or "", v.email or ""])
+        writer.writerow([v.voter_id, v.first_name, v.last_name, v.address or "", v.phone or "", v.email or ""])
 
     resp = Response(
         content=output.getvalue(),

@@ -59,7 +59,8 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       <table className="voter-table">
         <thead>
           <tr>
-            <th>Name</th>
+            <th>First</th>
+            <th>Last</th>
             <th>Voter ID</th>
             <th>Address</th>
             <th>Phone</th>
@@ -71,7 +72,8 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         <tbody>
           {voters.map((v) => (
             <tr key={v.id}>
-              <td>{v.name}</td>
+              <td>{v.first_name}</td>
+              <td>{v.last_name}</td>
               <td>{v.voter_id}</td>
               <td>{v.address}</td>
               <td>{v.phone}</td>
@@ -86,7 +88,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
           ))}
           {voters.length === 0 && (
             <tr>
-              <td colSpan={7} style={{ textAlign: "center" }}>
+              <td colSpan={8} style={{ textAlign: "center" }}>
                 No voters found
               </td>
             </tr>

@@ -74,10 +74,15 @@ export default function AdminPanel() {
       {message && <div className="info">{message}</div>}
 
       <section>
-        <h3>Import Voter File (CSV)</h3>
-        <p>Expected columns: name, address, voterID, phone, email</p>
-        <input type="file" accept=".csv" onChange={handleImportVoters} />
-      </section>
+  <h3>Import Voter File (CSV)</h3>
+  <p>
+    Expected columns: <code>first_name</code>, <code>last_name</code>,{" "}
+    <code>address</code>, <code>voterID</code>, <code>phone</code>,{" "}
+    <code>email</code>. A single <code>name</code> column is also supported.
+  </p>
+  <input type="file" accept=".csv" onChange={handleImportVoters} />
+    </section>
+
 
       <section>
         <h3>Import Voted List (CSV)</h3>
