@@ -45,6 +45,6 @@ class UserVoterTag(Base):
 class Branding(Base):
     __tablename__ = "branding"
 
-    id = Column(Integer, primary_key, index=True)
+    id = Column(Integer, primary_key=True, index=True)
     app_name = Column(String, default="Team Turnout Tracking")
     logo_url = Column(String, nullable=True)
