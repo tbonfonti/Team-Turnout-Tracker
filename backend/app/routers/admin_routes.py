@@ -17,6 +17,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _split_name(full_name: str):
+    """Split 'Jane Doe Smith' -> ('Jane Doe', 'Smith')."""
     full_name = (full_name or "").strip()
     if not full_name:
         return "", ""
@@ -38,21 +39,23 @@ async def import_voters(
     text = contents.decode("utf-8")
     reader = csv.DictReader(io.StringIO(text))
     count = 0
+
     for row in reader:
         voter_id = row.get("voterID") or row.get("voter_id")
         if not voter_id:
             continue
 
-        # Prefer explicit first_name / last_name, fall back to single "name"
+        # Prefer explicit first_name / last_name if present
         first_name = row.get("first_name") or row.get("FirstName") or ""
         last_name = row.get("last_name") or row.get("LastName") or ""
 
+        # If no separate fields, fall back to single "name" column
         if not (first_name or last_name):
-            legacy_name = row.get("name") or ""
+            legacy_name = row.get("name") or row.get("Name") or ""
             first_name, last_name = _split_name(legacy_name)
 
+        # Require at least something for name
         if not first_name and not last_name:
-            # Can't create a voter without any name info
             continue
 
         address = row.get("address") or row.get("Address") or None
@@ -77,6 +80,7 @@ async def import_voters(
             )
             db.add(voter)
         count += 1
+
     db.commit()
     return {"imported": count}
 
@@ -93,12 +97,14 @@ async def import_voted(
     header = next(reader, None)
     voter_ids: List[str] = []
 
+    # If header row has voterID / voter_id
     if header and ("voterID" in header or "voter_id" in header):
         idx = header.index("voterID") if "voterID" in header else header.index("voter_id")
         for row in reader:
             if len(row) > idx:
                 voter_ids.append(row[idx])
     else:
+        # Either header is a single-ID row, or there is no header
         if header and len(header) == 1:
             voter_ids.append(header[0])
         for row in reader:
@@ -111,19 +117,27 @@ async def import_voted(
         if voter and not voter.has_voted:
             voter.has_voted = True
             updated += 1
+
     db.commit()
     return {"updated": updated}
 
 
 @router.delete("/voters/delete-all")
-def delete_all_voters(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def delete_all_voters(
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
     deleted = db.query(Voter).delete()
     db.commit()
     return {"deleted": deleted}
 
 
 @router.post("/users/invite", response_model=UserOut)
-def invite_user(payload: InviteUserRequest, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def invite_user(
+    payload: InviteUserRequest,
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
@@ -139,6 +153,7 @@ def invite_user(payload: InviteUserRequest, db: Session = Depends(get_db), admin
     db.commit()
     db.refresh(user)
 
+    # Attach temp password in response (not stored as plain text)
     user.temp_password = temp_password  # type: ignore[attr-defined]
     return user
 
@@ -152,15 +167,4 @@ async def upload_logo(
     uploads_dir = "uploads"
     os.makedirs(uploads_dir, exist_ok=True)
     file_ext = os.path.splitext(file.filename)[1]
-    filename = f"logo_{secrets.token_hex(8)}{file_ext}"
-    filepath = os.path.join(uploads_dir, filename)
-
-    with open(filepath, "wb") as f:
-        f.write(await file.read())
-
-    branding = db.query(Branding).first()
-    if not branding:
-        branding = Branding(app_name="Team Turnout Tracking", logo_url=f"/static/{filename}")
-        db.add(branding)
-    else:
-        branding.logo_url = f"/stat_
+    filename = f"logo_{secrets.token_hex(8)}{f
