@@ -167,4 +167,22 @@ async def upload_logo(
     uploads_dir = "uploads"
     os.makedirs(uploads_dir, exist_ok=True)
     file_ext = os.path.splitext(file.filename)[1]
-    filename = f"logo_{secrets.token_hex(8)}{f
+    filename = f"logo_{secrets.token_hex(8)}{file_ext}"
+    filepath = os.path.join(uploads_dir, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(await file.read())
+
+    branding = db.query(Branding).first()
+    if not branding:
+        branding = Branding(
+            app_name="Team Turnout Tracking",
+            logo_url=f"/static/{filename}",
+        )
+        db.add(branding)
+    else:
+        branding.logo_url = f"/static/{filename}"
+
+    db.commit()
+    db.refresh(branding)
+    return branding
