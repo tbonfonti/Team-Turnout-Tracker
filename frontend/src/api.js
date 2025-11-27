@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
 let token = null;
 
@@ -22,6 +22,7 @@ export async function apiLogin(email, password) {
 
 export async function apiGetBranding() {
   const res = await fetch(`${API_BASE}/branding/`);
+  if (!res.ok) throw new Error("Failed to load branding");
   return res.json();
 }
 
@@ -38,7 +39,7 @@ export async function apiTagVoter(voterId) {
     method: "POST",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to tag");
+  if (!res.ok) throw new Error("Failed to tag voter");
   return res.json();
 }
 
@@ -47,7 +48,7 @@ export async function apiUntagVoter(voterId) {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to untag");
+  if (!res.ok) throw new Error("Failed to untag voter");
   return res.json();
 }
 
@@ -63,7 +64,7 @@ export async function apiExportCallList() {
   const res = await fetch(`${API_BASE}/tags/dashboard/export-call-list`, {
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to export");
+  if (!res.ok) throw new Error("Failed to export call list");
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");

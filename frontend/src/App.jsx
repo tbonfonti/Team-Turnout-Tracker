@@ -6,28 +6,25 @@ import Dashboard from "./components/Dashboard";
 import { apiLogin, setToken, apiGetBranding } from "./api";
 
 export default function App() {
+  const [user, setUser] = useState(null);
   const [authError, setAuthError] = useState("");
-  const [user, setUser] = useState(null); // we'll keep minimal info in local state
   const [branding, setBranding] = useState({ app_name: "Team Turnout Tracking" });
   const [taggedIds, setTaggedIds] = useState(new Set());
 
   useEffect(() => {
-    apiGetBranding().then(setBranding).catch(() => {});
+    apiGetBranding()
+      .then(setBranding)
+      .catch(() => {}); // ignore branding errors for now
   }, []);
 
   async function handleLogin(email, password) {
     try {
       const tokenData = await apiLogin(email, password);
       setToken(tokenData.access_token);
+      setUser({ email });
       setAuthError("");
-
-      // Decode basic payload to extract email; for demo we just save email & default is_admin guess.
-      const [, payload] = tokenData.access_token.split(".");
-      const decoded = JSON.parse(atob(payload));
-      setUser({ email: decoded.sub, is_admin: decoded.sub === "admin@example.com" ? true : undefined });
-      // In a real app, you would have an endpoint /me returning role & details.
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(err.message || "Login failed");
     }
   }
 
@@ -59,12 +56,10 @@ export default function App() {
           <LoginForm onLogin={handleLogin} error={authError} />
         ) : (
           <>
-            {/* In real app, fetch /me to know is_admin; for now, assume any logged-in user might be admin via separate UI logic */}
-            {/* You can enhance to store is_admin in JWT and decode here */}
             <Dashboard />
             <VoterSearch taggedIds={taggedIds} setTaggedIds={setTaggedIds} />
-            {/* Show admin panel if user is admin once you wire /me */}
-            {/* <AdminPanel /> */}
+            {/* For now, always show AdminPanel; backend enforces admin rights */}
+            <AdminPanel />
           </>
         )}
       </main>

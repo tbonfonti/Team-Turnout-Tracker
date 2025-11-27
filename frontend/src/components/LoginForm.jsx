@@ -15,11 +15,21 @@ export default function LoginForm({ onLogin, error }) {
       {error && <div className="error">{error}</div>}
       <label>
         Email
-        <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          required
+        />
       </label>
       <label>
         Password
-        <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required />
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          required
+        />
       </label>
       <button type="submit">Log in</button>
     </form>
