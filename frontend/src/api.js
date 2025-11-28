@@ -44,6 +44,13 @@ export function apiGetDashboardForUser(token, userId) {
   return request("GET", `/tags/dashboard?user_id=${userId}`, null, token);
 }
 
+// SEARCH VOTERS
+export function apiSearchVoters(token, query, page = 1, pageSize = 25) {
+  let url = `/voters/?page=${page}&page_size=${pageSize}`;
+  if (query) url += `&q=${encodeURIComponent(query)}`;
+  return request("GET", url, null, token);
+}
+
 // VOTERS
 export function apiGetVoters(token, page = 1, pageSize = 25, search = "") {
   let url = `/voters/?page=${page}&page_size=${pageSize}`;
