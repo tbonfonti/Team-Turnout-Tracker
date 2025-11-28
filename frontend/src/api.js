@@ -1,250 +1,240 @@
 // frontend/src/api.js
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
-// Base URL for your FastAPI backend
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://team-turnout-tracker.onrender.com";
+const TOKEN_KEY = "ttt_access_token";
 
-// In-memory token plus localStorage persistence
-let authToken = null;
+// ==== TOKEN HELPERS ====
 
 export function setToken(token) {
-  authToken = token;
-  if (typeof window !== "undefined" && window.localStorage) {
-    window.localStorage.setItem("ttt_token", token);
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
   }
 }
 
-export function getToken() {
-  if (authToken) return authToken;
-  if (typeof window !== "undefined" && window.localStorage) {
-    const stored = window.localStorage.getItem("ttt_token");
-    authToken = stored;
-    return stored;
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function authHeaders() {
+  const token = getToken();
+  if (!token) return {};
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+function jsonHeaders() {
+  return {
+    "Content-Type": "application/json",
+    ...authHeaders(),
+  };
+}
+
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, options);
+
+  if (!res.ok) {
+    let message = `Request failed with status ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && data.detail) {
+        message = Array.isArray(data.detail)
+          ? data.detail.map((d) => d.msg || d).join(", ")
+          : data.detail;
+      }
+    } catch {
+      // ignore parse error, keep generic message
+    }
+    throw new Error(message);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json();
   }
   return null;
 }
 
-export function clearToken() {
-  authToken = null;
-  if (typeof window !== "undefined" && window.localStorage) {
-    window.localStorage.removeItem("ttt_token");
-  }
-}
-
-// Helper for JSON / standard endpoints
-async function apiFetch(path, options = {}) {
-  const token = getToken();
-
-  // Handle FormData vs JSON
-  const isFormData = options.body instanceof FormData;
-  const headers = {
-    ...(options.headers || {}),
-  };
-  if (!isFormData) {
-    headers["Content-Type"] = headers["Content-Type"] || "application/json";
-  }
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    // Try to extract some error info
-    let errText = "";
-    try {
-      errText = await response.text();
-    } catch (_) {
-      // ignore
-    }
-    throw new Error(
-      errText || `Request to ${path} failed with status ${response.status}`
-    );
-  }
-
-  const contentType = response.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
-
-  // For non-JSON callers to handle directly (e.g. blobs)
-  return response;
-}
-
-/* ========= AUTH ========= */
+// ==== AUTH ====
 
 export async function apiLogin(email, password) {
-  const data = await apiFetch("/auth/login", {
+  const data = await fetchJson(`${API_BASE}/auth/login`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
 
-  // Assuming backend returns: { access_token, token_type, user }
-  if (data && data.access_token) {
+  if (data?.access_token) {
     setToken(data.access_token);
   }
+
   return data;
 }
 
 export async function apiGetMe() {
-  return apiFetch("/auth/me", {
-    method: "GET",
+  return fetchJson(`${API_BASE}/auth/me`, {
+    headers: authHeaders(),
   });
 }
 
-/* ========= BRANDING ========= */
+// ==== BRANDING ====
 
 export async function apiGetBranding() {
-  return apiFetch("/branding/", {
-    method: "GET",
+  return fetchJson(`${API_BASE}/branding/`, {
+    headers: authHeaders(),
   });
 }
 
-/* ========= VOTERS ========= */
+export async function apiUploadLogo(file) {
+  const formData = new FormData();
+  formData.append("file", file);
 
-// General paginated voter fetch (used by admin & possibly others)
-export async function apiGetVoters({ page = 1, pageSize = 25, q = "" } = {}) {
-  const params = new URLSearchParams();
-  params.set("page", String(page));
-  params.set("page_size", String(pageSize));
-  if (q) params.set("q", q);
-
-  return apiFetch(`/voters/?${params.toString()}`, {
-    method: "GET",
-  });
-}
-
-// Search helper specifically for the VoterSearch component
-export async function apiSearchVoters(query, page = 1, pageSize = 25) {
-  return apiGetVoters({ page, pageSize, q: query || "" });
-}
-
-/* ========= TAGS / DASHBOARD ========= */
-
-// User dashboard: counts of tagged / voted / not voted, etc.
-export async function apiGetDashboard() {
-  return apiFetch("/tags/dashboard", {
-    method: "GET",
-  });
-}
-
-// Export call list of not-yet-voted tagged voters
-// We mimic axios-style `response.data` so existing Dashboard.jsx continues to work.
-export async function apiExportCallList() {
-  const token = getToken();
-  const headers = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const response = await fetch(`${API_BASE_URL}/tags/export-call-list`, {
-    method: "GET",
-    headers,
+  const res = await fetch(`${API_BASE}/admin/branding/logo`, {
+    method: "POST",
+    headers: authHeaders(), // don't set Content-Type for FormData
+    body: formData,
   });
 
-  if (!response.ok) {
-    let errText = "";
-    try {
-      errText = await response.text();
-    } catch (_) {}
-    throw new Error(
-      errText ||
-        `Export call list failed with status ${response.status.toString()}`
-    );
+  if (!res.ok) {
+    throw new Error("Failed to upload logo");
   }
 
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition") || "";
-  let filename = "call_list.csv";
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  if (match && match[1]) {
-    filename = match[1];
-  }
-
-  return {
-    data: blob, // so existing code using `response.data` still works
-    filename,
-    headers: response.headers,
-  };
+  return res.json();
 }
 
-// Tag a voter for the current user
+// ==== VOTERS (SEARCH + PAGINATION) ====
+
+export async function apiSearchVoters(q, page = 1, pageSize = 25) {
+  const url = new URL(`${API_BASE}/voters/`);
+  if (q) url.searchParams.set("q", q);
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("page_size", String(pageSize));
+
+  return fetchJson(url.toString(), {
+    headers: authHeaders(),
+  });
+}
+
+// ==== TAGGING ====
+
 export async function apiTagVoter(voterId) {
-  return apiFetch(`/tags/${voterId}`, {
+  return fetchJson(`${API_BASE}/tags/${voterId}`, {
     method: "POST",
+    headers: authHeaders(),
   });
 }
 
-// Remove tag for a voter for the current user
+// Backend uses same endpoint to toggle tag
 export async function apiUntagVoter(voterId) {
-  return apiFetch(`/tags/${voterId}`, {
-    method: "DELETE",
+  return fetchJson(`${API_BASE}/tags/${voterId}`, {
+    method: "POST",
+    headers: authHeaders(),
   });
 }
 
-// Admin tag overview, with optional user filter
-// If your backend supports `?user_id=`, this will use it;
-// if not, it will just ignore the param when not implemented server-side.
-export async function apiGetTagOverview(userId = null) {
-  const params = new URLSearchParams();
-  if (userId) {
-    params.set("user_id", String(userId));
+// ==== USER DASHBOARD ====
+
+export async function apiGetDashboard() {
+  return fetchJson(`${API_BASE}/tags/dashboard`, {
+    headers: authHeaders(),
+  });
+}
+
+export async function apiExportCallList() {
+  const res = await fetch(`${API_BASE}/tags/dashboard/export-call-list`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to export call list");
   }
-  const query = params.toString();
-  const suffix = query ? `?${query}` : "";
 
-  return apiFetch(`/tags/admin-overview${suffix}`, {
-    method: "GET",
-  });
+  // Caller can create an object URL from this
+  return res.blob();
 }
 
-/* ========= ADMIN: USERS ========= */
+// ==== ADMIN – VOTER IMPORT / BULK ACTIONS ====
 
-// List users (for admin dropdown / overview)
-export async function apiListUsers() {
-  return apiFetch("/admin/users", {
-    method: "GET",
-  });
-}
-
-// Create new user (email + password + is_admin)
-export async function apiCreateUser(payload) {
-  // payload: { email, full_name, password, is_admin }
-  return apiFetch("/admin/users", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-/* ========= ADMIN: VOTER FILE MGMT ========= */
-
-// Upload base voter file CSV
-export async function apiUploadVoterFile(file) {
+export async function apiImportVoters(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  return apiFetch("/admin/upload-voter-file", {
+  const res = await fetch(`${API_BASE}/admin/voters/import`, {
     method: "POST",
+    headers: authHeaders(),
     body: formData,
   });
+
+  if (!res.ok) {
+    throw new Error("Failed to import voters");
+  }
+
+  return res.json();
 }
 
-// Upload file of people who have voted
-export async function apiUploadVotedFile(file) {
+export async function apiImportVoted(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  return apiFetch("/admin/upload-voted-file", {
+  const res = await fetch(`${API_BASE}/admin/voters/import-voted`, {
     method: "POST",
+    headers: authHeaders(),
     body: formData,
   });
+
+  if (!res.ok) {
+    throw new Error("Failed to import voted status");
+  }
+
+  return res.json();
 }
 
-// Delete all voters from DB
 export async function apiDeleteAllVoters() {
-  return apiFetch("/admin/delete-all-voters", {
+  const res = await fetch(`${API_BASE}/admin/voters/delete-all`, {
     method: "DELETE",
+    headers: authHeaders(),
   });
+
+  if (!res.ok) {
+    throw new Error("Failed to delete voters");
+  }
+
+  return res.json();
+}
+
+// ==== ADMIN – USER MANAGEMENT ====
+
+export async function apiInviteUser(email, fullName) {
+  return fetchJson(`${API_BASE}/admin/users/create`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email, full_name: fullName }),
+  });
+}
+
+// List all users for the admin filter
+export async function apiListUsers() {
+  return fetchJson(`${API_BASE}/admin/users`, {
+    headers: authHeaders(),
+  });
+}
+
+// ==== ADMIN – TAG OVERVIEW (WITH USER FILTER) ====
+
+export async function apiGetTagOverview(userId) {
+  const url = new URL(`${API_BASE}/admin/tags/overview`);
+  if (userId) {
+    url.searchParams.set("user_id", String(userId));
+  }
+
+  return fetchJson(url.toString(), {
+    headers: authHeaders(),
+  });
+}
+
+// Convenience alias if any existing code expects this name
+export async function apiGetDashboardForUser(userId) {
+  return apiGetTagOverview(userId);
 }
