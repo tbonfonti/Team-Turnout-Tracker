@@ -132,8 +132,8 @@ def delete_all_voters(
     return {"deleted": deleted}
 
 
-@router.post("/users/invite", response_model=UserOut)
-def invite_user(
+@router.post("/users/create", response_model=UserOut)
+def create_user(
     payload: InviteUserRequest,
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),

@@ -90,7 +90,7 @@ export async function apiDeleteAllVoters() {
 
 // ADMIN — USERS
 export async function apiInviteUser(email, fullName, password, isAdmin = false) {
-  const res = await fetch(`${API_BASE}/admin/users/invite`, {
+  const res = await fetch(`${API_BASE}/admin/users/create`, {
     method: "POST",
     headers: {
       ...authHeaders(),
@@ -103,7 +103,17 @@ export async function apiInviteUser(email, fullName, password, isAdmin = false) 
       is_admin: isAdmin,
     }),
   });
-  if (!res.ok) throw new Error("Failed to create user");
+
+  if (!res.ok) {
+    // Try to surface the real error instead of generic "load failed"
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      /* ignore */
+    }
+    throw new Error(text || "Failed to create user");
+  }
   return res.json();
 }
 
