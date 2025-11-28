@@ -7,26 +7,20 @@ from fastapi.staticfiles import StaticFiles
 from .database import Base, engine
 from . import models  # ensure models are imported so tables are registered
 from .routers import auth_routes, voter_routes, admin_routes, tag_routes, branding_routes
-
-# Base directory of the backend package
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
-
-# Make sure uploads directory exists
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+from .paths import UPLOADS_DIR  # <-- shared uploads directory
 
 app = FastAPI(title="Team Turnout Tracking")
 
-# CORS (you can tighten this later if you want)
+# CORS (you can tighten origins to just your frontend later)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # e.g. ["https://your-frontend.onrender.com"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve static files (logos, etc.) from /static
+# Serve static files (logos, etc.) from /static, backed by UPLOADS_DIR
 app.mount("/static", StaticFiles(directory=UPLOADS_DIR), name="static")
 
 # Create tables if they don't exist yet
