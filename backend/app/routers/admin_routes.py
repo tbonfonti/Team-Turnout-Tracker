@@ -127,9 +127,17 @@ def delete_all_voters(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    deleted = db.query(Voter).delete()
+    # First delete all tag relationships so foreign key constraints are not violated
+    deleted_tags = db.query(UserVoterTag).delete()
+
+    # Then delete all voters
+    deleted_voters = db.query(Voter).delete()
+
     db.commit()
-    return {"deleted": deleted}
+    return {
+      "deleted": deleted_voters,        # keep old field name for the frontend
+      "deleted_tags": deleted_tags      # extra info if you ever want it
+    }
 
 
 @router.post("/users/create", response_model=UserOut)
