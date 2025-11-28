@@ -12,9 +12,16 @@ from ..deps import get_current_admin
 from ..models import Voter, User, Branding, UserVoterTag
 from ..schemas import InviteUserRequest, UserOut, BrandingOut, TagOverviewItem
 from ..auth import get_password_hash
-from ..paths import UPLOADS_DIR  # <--- shared uploads directory
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# -------------------------------------------------------------------
+# Use the SAME uploads directory as in main.py:
+# <project_root>/backend/uploads
+# -------------------------------------------------------------------
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOADS_DIR = os.path.join(BACKEND_ROOT, "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 
 def _split_name(full_name: str):
