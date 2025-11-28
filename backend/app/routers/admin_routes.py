@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_admin
-from ..models import Voter, User, Branding
-from ..schemas import InviteUserRequest, UserOut, BrandingOut
+from ..models import Voter, User, Branding, UserVoterTag
+from ..schemas import InviteUserRequest, UserOut, BrandingOut, TagOverviewItem
 from ..auth import get_password_hash
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -183,3 +183,35 @@ async def upload_logo(
     db.commit()
     db.refresh(branding)
     return branding
+
+
+@router.get("/tags/overview", response_model=List[TagOverviewItem])
+def tags_overview(
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    """
+    For admins: see which users have tagged which voters.
+    """
+    rows = (
+        db.query(UserVoterTag, User, Voter)
+        .join(User, UserVoterTag.user_id == User.id)
+        .join(Voter, UserVoterTag.voter_id == Voter.id)
+        .all()
+    )
+
+    items: List[TagOverviewItem] = []
+    for tag, user, voter in rows:
+        items.append(
+            TagOverviewItem(
+                user_id=user.id,
+                user_email=user.email,
+                user_full_name=user.full_name,
+                voter_internal_id=voter.id,
+                voter_voter_id=voter.voter_id,
+                first_name=voter.first_name,
+                last_name=voter.last_name,
+                has_voted=voter.has_voted,
+            )
+        )
+    return items

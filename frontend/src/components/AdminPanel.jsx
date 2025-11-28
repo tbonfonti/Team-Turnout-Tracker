@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   apiImportVoters,
   apiImportVoted,
   apiDeleteAllVoters,
   apiInviteUser,
   apiUploadLogo,
+  apiGetMe,
+  apiGetTagOverview,
 } from "../api";
 
 export default function AdminPanel() {
@@ -13,6 +15,29 @@ export default function AdminPanel() {
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteResult, setInviteResult] = useState(null);
   const [message, setMessage] = useState("");
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
+
+  const [tagOverview, setTagOverview] = useState([]);
+  const [loadingTags, setLoadingTags] = useState(false);
+
+  useEffect(() => {
+    async function checkAdmin() {
+      try {
+        const me = await apiGetMe();
+        setIsAdmin(!!me.is_admin);
+        if (!me.is_admin) {
+          setMessage("You do not have access to the admin panel.");
+        }
+      } catch (err) {
+        setMessage("Failed to verify admin access.");
+      } finally {
+        setCheckingAdmin(false);
+      }
+    }
+    checkAdmin();
+  }, []);
 
   async function handleImportVoters(e) {
     const file = e.target.files[0];
@@ -58,7 +83,7 @@ export default function AdminPanel() {
       setMessage("User created. Share the login details with them directly.");
       setInvitePassword("");
     } catch (err) {
-      setMessage(err.message);
+      setMessage(err.message || "Failed to create user");
     }
   }
 
@@ -72,6 +97,36 @@ export default function AdminPanel() {
     } catch (err) {
       setMessage(err.message);
     }
+  }
+
+  async function handleLoadTagOverview() {
+    try {
+      setLoadingTags(true);
+      const items = await apiGetTagOverview();
+      setTagOverview(items);
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoadingTags(false);
+    }
+  }
+
+  if (checkingAdmin) {
+    return (
+      <div className="card">
+        <h2>Admin Panel</h2>
+        <div className="info">Checking admin access...</div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="card">
+        <h2>Admin Panel</h2>
+        <div className="error">You do not have access to this page.</div>
+      </div>
+    );
   }
 
   return (
@@ -138,6 +193,40 @@ export default function AdminPanel() {
       <section>
         <h3>Upload Logo</h3>
         <input type="file" accept="image/*" onChange={handleLogoUpload} />
+      </section>
+
+      <section>
+        <h3>Tagged Voters Overview</h3>
+        <button onClick={handleLoadTagOverview} disabled={loadingTags}>
+          {loadingTags ? "Loading..." : "Load Tagged Voters"}
+        </button>
+        {tagOverview.length > 0 && (
+          <table className="voter-table" style={{ marginTop: "0.5rem" }}>
+            <thead>
+              <tr>
+                <th>User Name</th>
+                <th>User Email</th>
+                <th>Voter</th>
+                <th>Voter ID</th>
+                <th>Voted?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tagOverview.map((item, idx) => (
+                <tr key={idx}>
+                  <td>{item.user_full_name || ""}</td>
+                  <td>{item.user_email}</td>
+                  <td>{`${item.first_name} ${item.last_name}`}</td>
+                  <td>{item.voter_voter_id}</td>
+                  <td>{item.has_voted ? "✅" : "❌"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {tagOverview.length === 0 && !loadingTags && (
+          <p style={{ marginTop: "0.5rem" }}>No tags to display yet.</p>
+        )}
       </section>
     </div>
   );

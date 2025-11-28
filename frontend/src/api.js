@@ -35,6 +35,16 @@ export async function apiLogin(email, password) {
   return data;
 }
 
+export async function apiGetMe() {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: {
+      ...authHeaders(),
+    },
+  });
+  if (!res.ok) throw new Error("Failed to load current user");
+  return res.json();
+}
+
 // BRANDING
 export async function apiGetBranding() {
   const res = await fetch(`${API_BASE}/branding/`, {
@@ -105,7 +115,6 @@ export async function apiInviteUser(email, fullName, password, isAdmin = false) 
   });
 
   if (!res.ok) {
-    // Try to surface the real error instead of generic "load failed"
     let text = "";
     try {
       text = await res.text();
@@ -132,19 +141,33 @@ export async function apiUploadLogo(file) {
   return res.json();
 }
 
+// ADMIN — TAG OVERVIEW
+export async function apiGetTagOverview() {
+  const res = await fetch(`${API_BASE}/admin/tags/overview`, {
+    headers: {
+      ...authHeaders(),
+    },
+  });
+  if (!res.ok) throw new Error("Failed to load tag overview");
+  return res.json();
+}
+
 // VOTERS
-export async function apiSearchVoters(query) {
+export async function apiSearchVoters(query, page = 1, pageSize = 25) {
   const url = new URL(`${API_BASE}/voters/`);
   if (query) {
     url.searchParams.set("q", query);
   }
+  url.searchParams.set("page", page);
+  url.searchParams.set("page_size", pageSize);
+
   const res = await fetch(url.toString(), {
     headers: {
       ...authHeaders(),
     },
   });
   if (!res.ok) throw new Error("Failed to load voters");
-  return res.json();
+  return res.json(); // { voters, total, page, page_size }
 }
 
 // TAGGING

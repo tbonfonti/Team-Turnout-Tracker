@@ -26,7 +26,7 @@ class UserOut(UserBase):
     is_admin: bool
 
     class Config:
-        orm_mode = True  # Pydantic v1-style; compatible via from_attributes in v2
+        orm_mode = True  # v1-style; v2 will treat this as from_attributes
 
 
 class LoginRequest(BaseModel):
@@ -60,6 +60,9 @@ class VoterOut(VoterBase):
 
 class VoterSearchResponse(BaseModel):
     voters: List[VoterOut]
+    total: int
+    page: int
+    page_size: int
 
 
 class BrandingOut(BaseModel):
@@ -68,3 +71,14 @@ class BrandingOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class TagOverviewItem(BaseModel):
+    user_id: int
+    user_email: EmailStr
+    user_full_name: Optional[str]
+    voter_internal_id: int
+    voter_voter_id: str
+    first_name: str
+    last_name: str
+    has_voted: bool

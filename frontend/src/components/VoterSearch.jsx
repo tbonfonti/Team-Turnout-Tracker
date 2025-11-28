@@ -6,10 +6,17 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
   const [voters, setVoters] = useState([]);
   const [error, setError] = useState("");
 
-  async function loadVoters() {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+
+  async function loadVoters(newPage = page, newPageSize = pageSize) {
     try {
-      const res = await apiSearchVoters(query);
+      const res = await apiSearchVoters(query, newPage, newPageSize);
       setVoters(res.voters);
+      setTotal(res.total);
+      setPage(res.page);
+      setPageSize(res.page_size);
       setError("");
     } catch (err) {
       setError(err.message);
@@ -17,7 +24,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
   }
 
   useEffect(() => {
-    loadVoters();
+    loadVoters(1, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -41,8 +48,12 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
 
   function handleSearch(e) {
     e.preventDefault();
-    loadVoters();
+    loadVoters(1, pageSize);
   }
+
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
 
   return (
     <div className="card">
@@ -56,6 +67,45 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         <button type="submit">Search</button>
       </form>
       {error && <div className="error">{error}</div>}
+
+      <div className="pagination-controls" style={{ margin: "0.5rem 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div>
+          Showing {start}-{end} of {total}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <label>
+            Rows per page:{" "}
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                const newSize = Number(e.target.value);
+                setPage(1);
+                loadVoters(1, newSize);
+              }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+          </label>
+          <button
+            onClick={() => loadVoters(page - 1, pageSize)}
+            disabled={page <= 1}
+          >
+            Prev
+          </button>
+          <button
+            onClick={() => loadVoters(page + 1, pageSize)}
+            disabled={page >= totalPages}
+          >
+            Next
+          </button>
+          <span>
+            Page {page} of {totalPages}
+          </span>
+        </div>
+      </div>
+
       <table className="voter-table">
         <thead>
           <tr>

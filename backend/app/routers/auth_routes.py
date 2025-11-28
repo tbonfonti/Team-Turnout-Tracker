@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..deps import login
+from ..deps import login, get_current_user
 from ..schemas import LoginRequest, Token, UserCreate, UserOut
 from ..database import get_db
 from ..models import User
@@ -31,3 +31,7 @@ def create_initial_admin(user_in: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+@router.get("/me", response_model=UserOut)
+def read_me(current_user=Depends(get_current_user)):
+    return current_user
