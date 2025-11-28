@@ -2,9 +2,9 @@ import csv
 import io
 import os
 import secrets
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -12,16 +12,9 @@ from ..deps import get_current_admin
 from ..models import Voter, User, Branding, UserVoterTag
 from ..schemas import InviteUserRequest, UserOut, BrandingOut, TagOverviewItem
 from ..auth import get_password_hash
+from ..paths import UPLOADS_DIR  # shared uploads directory
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-# -------------------------------------------------------------------
-# Use the SAME uploads directory as in main.py:
-# <project_root>/backend/uploads
-# -------------------------------------------------------------------
-BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOADS_DIR = os.path.join(BACKEND_ROOT, "uploads")
-os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 
 def _split_name(full_name: str):
@@ -162,6 +155,9 @@ def delete_all_voters(
     return {"deleted": deleted_voters, "deleted_tags": deleted_tags}
 
 
+# ---------- USERS (for admins) ----------
+
+
 @router.post("/users/create", response_model=UserOut)
 def create_user(
     payload: InviteUserRequest,
@@ -183,6 +179,20 @@ def create_user(
     db.refresh(user)
 
     return user
+
+
+@router.get("/users", response_model=List[UserOut])
+def list_users(
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    """
+    List all users (for admin dropdown filter on tag overview).
+    """
+    return db.query(User).order_by(User.full_name, User.email).all()
+
+
+# ---------- BRANDING ----------
 
 
 @router.post("/branding/logo", response_model=BrandingOut)
@@ -218,20 +228,29 @@ async def upload_logo(
     return branding
 
 
+# ---------- TAG OVERVIEW (admin) ----------
+
+
 @router.get("/tags/overview", response_model=List[TagOverviewItem])
 def tags_overview(
+    user_id: Optional[int] = Query(default=None, description="Filter by user ID"),
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
     """
     For admins: see which users have tagged which voters.
+    Optional filter by user_id.
     """
-    rows = (
+    query = (
         db.query(UserVoterTag, User, Voter)
         .join(User, UserVoterTag.user_id == User.id)
         .join(Voter, UserVoterTag.voter_id == Voter.id)
-        .all()
     )
+
+    if user_id is not None:
+        query = query.filter(User.id == user_id)
+
+    rows = query.all()
 
     items: List[TagOverviewItem] = []
     for tag, user, voter in rows:

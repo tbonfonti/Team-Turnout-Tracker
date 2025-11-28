@@ -1,6 +1,6 @@
 // frontend/src/api.js
 
-// Backend base URL (set VITE_API_BASE in Render / .env to your backend URL)
+// Backend base URL (set VITE_API_BASE in Render / .env)
 export const API_BASE = (import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000").replace(
   /\/+$/,
   ""
@@ -23,34 +23,19 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/* =========================
-   AUTH
-   ========================= */
+// ---------- AUTH ----------
 
 export async function apiLogin(email, password) {
-  // Backend expects OAuth2-style form data: username + password
-  const body = new URLSearchParams();
-  body.set("username", email);
-  body.set("password", password);
-
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/json",
     },
-    body,
+    body: JSON.stringify({ email, password }),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Login failed");
-  }
-
+  if (!res.ok) throw new Error("Login failed");
   const data = await res.json();
-  if (data.access_token) {
-    setToken(data.access_token);
-  }
+  setToken(data.access_token);
   return data;
 }
 
@@ -64,9 +49,7 @@ export async function apiGetMe() {
   return res.json();
 }
 
-/* =========================
-   BRANDING (PUBLIC)
-   ========================= */
+// ---------- BRANDING ----------
 
 export async function apiGetBranding() {
   const res = await fetch(`${API_BASE}/branding/`, {
@@ -74,33 +57,36 @@ export async function apiGetBranding() {
       ...authHeaders(),
     },
   });
-
   if (!res.ok) {
-    // If branding row doesn't exist yet, just fall back to defaults
-    return {
-      app_name: "Team Turnout Tracking",
-      logo_url: null,
-    };
+    throw new Error("Failed to load branding");
   }
-
   const data = await res.json();
-
-  // Normalize relative logo URL to full backend URL
-  if (data.logo_url && data.logo_url.startsWith("/")) {
+  // Normalize logo_url to a full URL pointing at the backend
+  if (data.logo_url && !data.logo_url.startsWith("http")) {
     data.logo_url = `${API_BASE}${data.logo_url}`;
   }
-
   return data;
 }
 
-/* =========================
-   ADMIN — VOTER MANAGEMENT
-   ========================= */
+export async function apiUploadLogo(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/admin/branding/logo`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+    },
+    body: form,
+  });
+  if (!res.ok) throw new Error("Failed to upload logo");
+  return res.json();
+}
+
+// ---------- ADMIN – VOTER IMPORT / MANAGEMENT ----------
 
 export async function apiImportVoters(file) {
   const form = new FormData();
   form.append("file", file);
-
   const res = await fetch(`${API_BASE}/admin/voters/import`, {
     method: "POST",
     headers: {
@@ -108,19 +94,13 @@ export async function apiImportVoters(file) {
     },
     body: form,
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to import voters");
-  }
-
-  return res.json(); // { imported }
+  if (!res.ok) throw new Error("Failed to import voters");
+  return res.json();
 }
 
 export async function apiImportVoted(file) {
   const form = new FormData();
   form.append("file", file);
-
   const res = await fetch(`${API_BASE}/admin/voters/import-voted`, {
     method: "POST",
     headers: {
@@ -128,13 +108,8 @@ export async function apiImportVoted(file) {
     },
     body: form,
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to import voted list");
-  }
-
-  return res.json(); // { updated }
+  if (!res.ok) throw new Error("Failed to import voted list");
+  return res.json();
 }
 
 export async function apiDeleteAllVoters() {
@@ -144,96 +119,53 @@ export async function apiDeleteAllVoters() {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to delete voters");
-  }
-
-  return res.json(); // { deleted, deleted_tags }
+  if (!res.ok) throw new Error("Failed to delete voters");
+  return res.json();
 }
 
-/* =========================
-   ADMIN — USER MANAGEMENT
-   ========================= */
+// ---------- ADMIN – USERS ----------
 
-export async function apiInviteUser({ full_name, email, password, is_admin }) {
-  // This actually creates a user directly (no email).
+export async function apiInviteUser(email, fullName, password, isAdmin = false) {
   const res = await fetch(`${API_BASE}/admin/users/create`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
       ...authHeaders(),
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      full_name,
       email,
+      full_name: fullName,
       password,
-      is_admin,
+      is_admin: isAdmin,
     }),
   });
 
   if (!res.ok) {
-    const text = await res.text();
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      /* ignore */
+    }
     throw new Error(text || "Failed to create user");
   }
-
-  return res.json(); // UserOut
+  return res.json();
 }
 
 export async function apiListUsers() {
-  // For admin filter dropdown in tag overview
   const res = await fetch(`${API_BASE}/admin/users`, {
     headers: {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to load users");
-  }
-
-  return res.json(); // List[UserOut]
+  if (!res.ok) throw new Error("Failed to load users");
+  return res.json();
 }
 
-/* =========================
-   ADMIN — BRANDING
-   ========================= */
-
-export async function apiUploadLogo(file) {
-  const form = new FormData();
-  form.append("file", file);
-
-  const res = await fetch(`${API_BASE}/admin/branding/logo`, {
-    method: "POST",
-    headers: {
-      ...authHeaders(),
-    },
-    body: form,
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to upload logo");
-  }
-
-  const data = await res.json();
-
-  if (data.logo_url && data.logo_url.startsWith("/")) {
-    data.logo_url = `${API_BASE}${data.logo_url}`;
-  }
-
-  return data; // BrandingOut
-}
-
-/* =========================
-   ADMIN — TAG OVERVIEW
-   ========================= */
+// ---------- ADMIN – TAG OVERVIEW ----------
 
 export async function apiGetTagOverview(userId) {
   const url = new URL(`${API_BASE}/admin/tags/overview`);
-
   if (userId) {
     url.searchParams.set("user_id", userId);
   }
@@ -243,22 +175,14 @@ export async function apiGetTagOverview(userId) {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to load tag overview");
-  }
-
-  return res.json(); // List[TagOverviewItem]
+  if (!res.ok) throw new Error("Failed to load tag overview");
+  return res.json();
 }
 
-/* =========================
-   VOTERS (SEARCH / LIST)
-   ========================= */
+// ---------- VOTERS ----------
 
 export async function apiSearchVoters(query, page = 1, pageSize = 25) {
   const url = new URL(`${API_BASE}/voters/`);
-
   if (query) {
     url.searchParams.set("q", query);
   }
@@ -270,18 +194,11 @@ export async function apiSearchVoters(query, page = 1, pageSize = 25) {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to load voters");
-  }
-
+  if (!res.ok) throw new Error("Failed to load voters");
   return res.json(); // { voters, total, page, page_size }
 }
 
-/* =========================
-   TAGGING (USER DASHBOARD)
-   ========================= */
+// ---------- TAGGING (user side) ----------
 
 export async function apiTagVoter(voterId) {
   const res = await fetch(`${API_BASE}/tags/${voterId}`, {
@@ -290,12 +207,7 @@ export async function apiTagVoter(voterId) {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to tag voter");
-  }
-
+  if (!res.ok) throw new Error("Failed to tag voter");
   return res.json();
 }
 
@@ -306,34 +218,20 @@ export async function apiUntagVoter(voterId) {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to untag voter");
-  }
-
+  if (!res.ok) throw new Error("Failed to untag voter");
   return res.json();
 }
 
-export async function apiGetMyTaggedVoters() {
+// ---------- DASHBOARD (user side) ----------
+
+export async function apiGetDashboard() {
   const res = await fetch(`${API_BASE}/tags/dashboard`, {
     headers: {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to load tagged voters");
-  }
-
-  return res.json(); // { tagged_voters, total_tagged, total_voted, total_not_voted }
-}
-
-// Backwards-compatible name used by Dashboard.jsx
-export async function apiGetDashboard() {
-  // Just reuse the same endpoint/logic
-  return apiGetMyTaggedVoters();
+  if (!res.ok) throw new Error("Failed to load dashboard");
+  return res.json();
 }
 
 export async function apiExportCallList() {
@@ -342,12 +240,7 @@ export async function apiExportCallList() {
       ...authHeaders(),
     },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to export call list");
-  }
-
+  if (!res.ok) throw new Error("Failed to export call list");
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
