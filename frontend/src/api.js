@@ -1,4 +1,7 @@
-const API_BASE = (import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000").replace(
+// frontend/src/api.js
+
+// Backend base URL (set VITE_API_BASE in Render / .env)
+export const API_BASE = (import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000").replace(
   /\/+$/,
   ""
 );
@@ -21,6 +24,7 @@ function authHeaders() {
 }
 
 // AUTH
+
 export async function apiLogin(email, password) {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
@@ -46,6 +50,7 @@ export async function apiGetMe() {
 }
 
 // BRANDING
+
 export async function apiGetBranding() {
   const res = await fetch(`${API_BASE}/branding/`, {
     headers: {
@@ -55,10 +60,16 @@ export async function apiGetBranding() {
   if (!res.ok) {
     throw new Error("Failed to load branding");
   }
-  return res.json();
+  const data = await res.json();
+  // Normalize logo_url to a full URL pointing at the backend
+  if (data.logo_url && !data.logo_url.startsWith("http")) {
+    data.logo_url = `${API_BASE}${data.logo_url}`;
+  }
+  return data;
 }
 
 // ADMIN — VOTER IMPORT / MANAGEMENT
+
 export async function apiImportVoters(file) {
   const form = new FormData();
   form.append("file", file);
@@ -99,6 +110,7 @@ export async function apiDeleteAllVoters() {
 }
 
 // ADMIN — USERS
+
 export async function apiInviteUser(email, fullName, password, isAdmin = false) {
   const res = await fetch(`${API_BASE}/admin/users/create`, {
     method: "POST",
@@ -127,6 +139,7 @@ export async function apiInviteUser(email, fullName, password, isAdmin = false) 
 }
 
 // ADMIN — LOGO
+
 export async function apiUploadLogo(file) {
   const form = new FormData();
   form.append("file", file);
@@ -142,6 +155,7 @@ export async function apiUploadLogo(file) {
 }
 
 // ADMIN — TAG OVERVIEW
+
 export async function apiGetTagOverview() {
   const res = await fetch(`${API_BASE}/admin/tags/overview`, {
     headers: {
@@ -153,6 +167,7 @@ export async function apiGetTagOverview() {
 }
 
 // VOTERS
+
 export async function apiSearchVoters(query, page = 1, pageSize = 25) {
   const url = new URL(`${API_BASE}/voters/`);
   if (query) {
@@ -171,6 +186,7 @@ export async function apiSearchVoters(query, page = 1, pageSize = 25) {
 }
 
 // TAGGING
+
 export async function apiTagVoter(voterId) {
   const res = await fetch(`${API_BASE}/tags/${voterId}`, {
     method: "POST",
@@ -194,6 +210,7 @@ export async function apiUntagVoter(voterId) {
 }
 
 // DASHBOARD
+
 export async function apiGetDashboard() {
   const res = await fetch(`${API_BASE}/tags/dashboard`, {
     headers: {

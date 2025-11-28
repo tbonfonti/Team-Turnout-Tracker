@@ -15,6 +15,11 @@ from ..auth import get_password_hash
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+# Base dir and uploads dir (must match main.py)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
 
 def _split_name(full_name: str):
     """Split 'Jane Doe Smith' -> ('Jane Doe', 'Smith')."""
@@ -54,6 +59,7 @@ async def import_voters(
             legacy_name = row.get("name") or row.get("Name") or ""
             first_name, last_name = _split_name(legacy_name)
 
+        # Require at least something for name
         if not first_name and not last_name:
             continue
 
@@ -146,6 +152,7 @@ def delete_all_voters(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
+    # Delete tags first to avoid foreign key constraint errors
     deleted_tags = db.query(UserVoterTag).delete()
     deleted_voters = db.query(Voter).delete()
     db.commit()
@@ -181,11 +188,10 @@ async def upload_logo(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    uploads_dir = "uploads"
-    os.makedirs(uploads_dir, exist_ok=True)
+    # Create unique filename in the uploads directory
     file_ext = os.path.splitext(file.filename)[1]
     filename = f"logo_{secrets.token_hex(8)}{file_ext}"
-    filepath = os.path.join(uploads_dir, filename)
+    filepath = os.path.join(UPLOADS_DIR, filename)
 
     with open(filepath, "wb") as f:
         f.write(await file.read())
@@ -210,6 +216,9 @@ def tags_overview(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
+    """
+    For admins: see which users have tagged which voters.
+    """
     rows = (
         db.query(UserVoterTag, User, Voter)
         .join(User, UserVoterTag.user_id == User.id)
