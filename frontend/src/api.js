@@ -330,6 +330,12 @@ export async function apiGetMyTaggedVoters() {
   return res.json(); // { tagged_voters, total_tagged, total_voted, total_not_voted }
 }
 
+// Backwards-compatible name used by Dashboard.jsx
+export async function apiGetDashboard() {
+  // Just reuse the same endpoint/logic
+  return apiGetMyTaggedVoters();
+}
+
 export async function apiExportCallList() {
   const res = await fetch(`${API_BASE}/tags/dashboard/export-call-list`, {
     headers: {
