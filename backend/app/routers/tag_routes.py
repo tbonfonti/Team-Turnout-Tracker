@@ -88,7 +88,20 @@ def export_call_list(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["voter_id", "first_name", "last_name", "address", "phone", "email"])
+    writer.writerow(
+        [
+            "voter_id",
+            "first_name",
+            "last_name",
+            "address",
+            "city",
+            "state",
+            "zip_code",
+            "registered_party",
+            "phone",
+            "email",
+        ]
+    )
     for v in voters:
         writer.writerow(
             [
@@ -96,6 +109,10 @@ def export_call_list(
                 v.first_name,
                 v.last_name,
                 v.address or "",
+                v.city or "",
+                v.state or "",
+                v.zip_code or "",
+                v.registered_party or "",
                 v.phone or "",
                 v.email or "",
             ]

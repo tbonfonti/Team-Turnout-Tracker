@@ -23,6 +23,12 @@ class Voter(Base):
     first_name = Column(String, index=True, nullable=False)
     last_name = Column(String, index=True, nullable=False)
     address = Column(String, nullable=True)
+
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+    registered_party = Column(String, nullable=True)
+
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     has_voted = Column(Boolean, default=False)

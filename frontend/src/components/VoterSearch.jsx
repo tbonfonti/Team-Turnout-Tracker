@@ -60,7 +60,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       <h2>Voter Database</h2>
       <form onSubmit={handleSearch} className="inline-form">
         <input
-          placeholder="Search by name, address, ID, phone, email..."
+          placeholder="Search by name, address, city, party, ID, phone, email..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -68,7 +68,17 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       </form>
       {error && <div className="error">{error}</div>}
 
-      <div className="pagination-controls" style={{ margin: "0.5rem 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+      <div
+        className="pagination-controls"
+        style={{
+          margin: "0.5rem 0",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.5rem",
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           Showing {start}-{end} of {total}
         </div>
@@ -88,10 +98,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <option value={50}>50</option>
             </select>
           </label>
-          <button
-            onClick={() => loadVoters(page - 1, pageSize)}
-            disabled={page <= 1}
-          >
+          <button onClick={() => loadVoters(page - 1, pageSize)} disabled={page <= 1}>
             Prev
           </button>
           <button
@@ -113,6 +120,10 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
             <th>Last</th>
             <th>Voter ID</th>
             <th>Address</th>
+            <th>City</th>
+            <th>State</th>
+            <th>Zip</th>
+            <th>Party</th>
             <th>Phone</th>
             <th>Email</th>
             <th>Voted?</th>
@@ -126,6 +137,10 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <td>{v.last_name}</td>
               <td>{v.voter_id}</td>
               <td>{v.address}</td>
+              <td>{v.city}</td>
+              <td>{v.state}</td>
+              <td>{v.zip_code}</td>
+              <td>{v.registered_party}</td>
               <td>{v.phone}</td>
               <td>{v.email}</td>
               <td>{v.has_voted ? "✅" : "❌"}</td>
@@ -138,7 +153,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
           ))}
           {voters.length === 0 && (
             <tr>
-              <td colSpan={8} style={{ textAlign: "center" }}>
+              <td colSpan={12} style={{ textAlign: "center" }}>
                 No voters found
               </td>
             </tr>

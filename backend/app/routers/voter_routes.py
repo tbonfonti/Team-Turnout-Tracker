@@ -18,13 +18,6 @@ def search_voters(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """
-    Search voters with pagination.
-    - q: free-text search across name/address/contact/voter_id
-    - page: 1-based page number
-    - page_size: 10 / 25 / 50 (clamped to <= 50)
-    """
-    # Clamp page_size to sensible values (10, 25, 50)
     if page_size not in (10, 25, 50):
         if page_size < 10:
             page_size = 10
@@ -40,6 +33,10 @@ def search_voters(
             (Voter.first_name.ilike(q_like))
             | (Voter.last_name.ilike(q_like))
             | (Voter.address.ilike(q_like))
+            | (Voter.city.ilike(q_like))
+            | (Voter.state.ilike(q_like))
+            | (Voter.zip_code.ilike(q_like))
+            | (Voter.registered_party.ilike(q_like))
             | (Voter.email.ilike(q_like))
             | (Voter.phone.ilike(q_like))
             | (Voter.voter_id.ilike(q_like))

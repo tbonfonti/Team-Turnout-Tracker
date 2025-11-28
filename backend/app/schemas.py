@@ -26,7 +26,7 @@ class UserOut(UserBase):
     is_admin: bool
 
     class Config:
-        orm_mode = True  # v1-style; v2 will treat this as from_attributes
+        orm_mode = True
 
 
 class LoginRequest(BaseModel):
@@ -46,6 +46,12 @@ class VoterBase(BaseModel):
     first_name: str
     last_name: str
     address: Optional[str] = None
+
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    registered_party: Optional[str] = None
+
     phone: Optional[str] = None
     email: Optional[str] = None
 

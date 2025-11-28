@@ -54,11 +54,22 @@ async def import_voters(
             legacy_name = row.get("name") or row.get("Name") or ""
             first_name, last_name = _split_name(legacy_name)
 
-        # Require at least something for name
         if not first_name and not last_name:
             continue
 
         address = row.get("address") or row.get("Address") or None
+
+        city = row.get("city") or row.get("City") or None
+        state = row.get("state") or row.get("State") or None
+        zip_code = row.get("zip") or row.get("Zip") or row.get("zip_code") or None
+        registered_party = (
+            row.get("registered_party")
+            or row.get("RegisteredParty")
+            or row.get("party")
+            or row.get("Party")
+            or None
+        )
+
         phone = row.get("phone") or row.get("Phone") or None
         email = row.get("email") or row.get("Email") or None
 
@@ -67,6 +78,10 @@ async def import_voters(
             voter.first_name = first_name
             voter.last_name = last_name
             voter.address = address
+            voter.city = city
+            voter.state = state
+            voter.zip_code = zip_code
+            voter.registered_party = registered_party
             voter.phone = phone
             voter.email = email
         else:
@@ -75,6 +90,10 @@ async def import_voters(
                 first_name=first_name or "",
                 last_name=last_name or "",
                 address=address,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                registered_party=registered_party,
                 phone=phone,
                 email=email,
             )
@@ -127,17 +146,10 @@ def delete_all_voters(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    # First delete all tag relationships so foreign key constraints are not violated
     deleted_tags = db.query(UserVoterTag).delete()
-
-    # Then delete all voters
     deleted_voters = db.query(Voter).delete()
-
     db.commit()
-    return {
-      "deleted": deleted_voters,        # keep old field name for the frontend
-      "deleted_tags": deleted_tags      # extra info if you ever want it
-    }
+    return {"deleted": deleted_voters, "deleted_tags": deleted_tags}
 
 
 @router.post("/users/create", response_model=UserOut)
@@ -198,9 +210,6 @@ def tags_overview(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    """
-    For admins: see which users have tagged which voters.
-    """
     rows = (
         db.query(UserVoterTag, User, Voter)
         .join(User, UserVoterTag.user_id == User.id)
