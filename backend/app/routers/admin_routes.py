@@ -15,9 +15,12 @@ from ..auth import get_password_hash
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-# Base dir and uploads dir (must match main.py)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+# -------------------------------------------------------------------
+# Use the SAME uploads directory as in main.py:
+# <project_root>/backend/uploads
+# -------------------------------------------------------------------
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOADS_DIR = os.path.join(BACKEND_ROOT, "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 
@@ -188,7 +191,11 @@ async def upload_logo(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    # Create unique filename in the uploads directory
+    """
+    Upload a logo and store it in backend/uploads.
+    The URL stored in the DB is /static/<filename>,
+    which maps to that folder via the mount in main.py.
+    """
     file_ext = os.path.splitext(file.filename)[1]
     filename = f"logo_{secrets.token_hex(8)}{file_ext}"
     filepath = os.path.join(UPLOADS_DIR, filename)
