@@ -7,20 +7,24 @@ import {
   apiUploadLogo,
   apiGetMe,
   apiGetTagOverview,
+  apiListUsers,
 } from "../api";
 
 export default function AdminPanel() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [invitePassword, setInvitePassword] = useState("");
-  const [inviteResult, setInviteResult] = useState(null);
-  const [message, setMessage] = useState("");
+  const [inviteIsAdmin, setInviteIsAdmin] = useState(false);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [message, setMessage] = useState("");
   const [checkingAdmin, setCheckingAdmin] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [tagOverview, setTagOverview] = useState([]);
   const [loadingTags, setLoadingTags] = useState(false);
+  const [tagUsers, setTagUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   useEffect(() => {
     async function checkAdmin() {
@@ -61,11 +65,13 @@ export default function AdminPanel() {
     }
   }
 
-  async function handleDeleteAll() {
+  async function handleDeleteAllVoters() {
     if (!window.confirm("Are you sure you want to delete ALL voters?")) return;
     try {
       const res = await apiDeleteAllVoters();
-      setMessage(`Deleted ${res.deleted} voters`);
+      setMessage(
+        `Deleted ${res.deleted} voters and ${res.deleted_tags} tags from the database.`
+      );
     } catch (err) {
       setMessage(err.message);
     }
@@ -73,36 +79,54 @@ export default function AdminPanel() {
 
   async function handleInvite(e) {
     e.preventDefault();
-    if (!inviteEmail || !invitePassword) {
-      setMessage("Email and password are required");
-      return;
-    }
+    setMessage("");
     try {
-      const user = await apiInviteUser(inviteEmail, inviteName, invitePassword, false);
-      setInviteResult(user);
-      setMessage("User created. Share the login details with them directly.");
+      const user = await apiInviteUser({
+        full_name: inviteName,
+        email: inviteEmail,
+        password: invitePassword,
+        is_admin: inviteIsAdmin,
+      });
+      setMessage(`User created: ${user.email}`);
+      setInviteEmail("");
+      setInviteName("");
       setInvitePassword("");
+      setInviteIsAdmin(false);
     } catch (err) {
-      setMessage(err.message || "Failed to create user");
+      setMessage(err.message);
     }
   }
 
   async function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
+    setMessage("");
     try {
       const res = await apiUploadLogo(file);
-      console.log("Branding updated:", res);
-      setMessage("Logo uploaded.");
+      setMessage("Logo uploaded successfully.");
     } catch (err) {
       setMessage(err.message);
+    }
+  }
+
+  async function loadUsersForFilter() {
+    if (tagUsers.length > 0) return;
+    try {
+      setLoadingUsers(true);
+      const users = await apiListUsers();
+      setTagUsers(users);
+    } catch (err) {
+      setMessage(err.message || "Failed to load user list");
+    } finally {
+      setLoadingUsers(false);
     }
   }
 
   async function handleLoadTagOverview() {
     try {
       setLoadingTags(true);
-      const items = await apiGetTagOverview();
+      await loadUsersForFilter();
+      const items = await apiGetTagOverview(selectedUserId || undefined);
       setTagOverview(items);
     } catch (err) {
       setMessage(err.message);
@@ -112,48 +136,49 @@ export default function AdminPanel() {
   }
 
   if (checkingAdmin) {
-    return (
-      <div className="card">
-        <h2>Admin Panel</h2>
-        <div className="info">Checking admin access...</div>
-      </div>
-    );
+    return <p>Checking admin access...</p>;
   }
 
   if (!isAdmin) {
-    return (
-      <div className="card">
-        <h2>Admin Panel</h2>
-        <div className="error">You do not have access to this page.</div>
-      </div>
-    );
+    return <p>{message || "You do not have access to this page."}</p>;
   }
 
   return (
-    <div className="card">
+    <div className="admin-panel">
       <h2>Admin Panel</h2>
-      {message && <div className="info">{message}</div>}
-
-      <section>
-        <h3>Import Voter File (CSV)</h3>
-        <p>
-          Expected columns: <code>first_name</code>, <code>last_name</code>,{" "}
-          <code>address</code>, <code>voterID</code>, <code>phone</code>,{" "}
-          <code>email</code>. A single <code>name</code> column is also supported.
+      {message && (
+        <p
+          style={{
+            padding: "0.5rem",
+            background: "#f0f4ff",
+            borderRadius: "4px",
+            marginBottom: "1rem",
+          }}
+        >
+          {message}
         </p>
-        <input type="file" accept=".csv" onChange={handleImportVoters} />
-      </section>
+      )}
 
       <section>
-        <h3>Import Voted List (CSV)</h3>
-        <p>Either a column named voterID or a single-column list of voter IDs.</p>
-        <input type="file" accept=".csv" onChange={handleImportVoted} />
-      </section>
-
-      <section>
-        <h3>Delete All Voters</h3>
-        <button onClick={handleDeleteAll} className="danger">
-          Delete All Voters
+        <h3>Voter File Management</h3>
+        <div style={{ marginBottom: "0.5rem" }}>
+          <label>
+            Import voter file (CSV):{" "}
+            <input type="file" accept=".csv" onChange={handleImportVoters} />
+          </label>
+        </div>
+        <div style={{ marginBottom: "0.5rem" }}>
+          <label>
+            Import voted list (CSV of voterID):{" "}
+            <input type="file" accept=".csv" onChange={handleImportVoted} />
+          </label>
+        </div>
+        <button
+          style={{ marginTop: "0.5rem" }}
+          onClick={handleDeleteAllVoters}
+          className="danger"
+        >
+          Delete ALL voters
         </button>
       </section>
 
@@ -178,16 +203,16 @@ export default function AdminPanel() {
             value={invitePassword}
             onChange={(e) => setInvitePassword(e.target.value)}
           />
+          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+            <input
+              type="checkbox"
+              checked={inviteIsAdmin}
+              onChange={(e) => setInviteIsAdmin(e.target.checked)}
+            />
+            Admin?
+          </label>
           <button type="submit">Create User</button>
         </form>
-        {inviteResult && (
-          <div className="info">
-            <p>
-              Created user <strong>{inviteResult.email}</strong>
-            </p>
-            <p>Provide them the email and password you just set.</p>
-          </div>
-        )}
       </section>
 
       <section>
@@ -197,9 +222,35 @@ export default function AdminPanel() {
 
       <section>
         <h3>Tagged Voters Overview</h3>
-        <button onClick={handleLoadTagOverview} disabled={loadingTags}>
-          {loadingTags ? "Loading..." : "Load Tagged Voters"}
-        </button>
+        <div
+          style={{
+            marginTop: "0.5rem",
+            marginBottom: "0.5rem",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
+          <label>
+            Filter by user:&nbsp;
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+            >
+              <option value="">All users</option>
+              {tagUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name ? `${u.full_name} (${u.email})` : u.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={handleLoadTagOverview} disabled={loadingTags}>
+            {loadingTags ? "Loading..." : "Load Tagged Voters"}
+          </button>
+          {loadingUsers && <span>Loading users…</span>}
+        </div>
         {tagOverview.length > 0 && (
           <table className="voter-table" style={{ marginTop: "0.5rem" }}>
             <thead>

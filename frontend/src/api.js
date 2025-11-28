@@ -14,28 +14,40 @@ export function setToken(token) {
   localStorage.setItem("ttt_token", token);
 }
 
-export function clearToken() {
-  localStorage.removeItem("ttt_token");
-}
-
 function authHeaders() {
   const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return token
+    ? {
+        Authorization: `Bearer ${token}`,
+      }
+    : {};
 }
 
 // AUTH
 
 export async function apiLogin(email, password) {
+  const body = new URLSearchParams();
+  body.set("username", email);
+  body.set("password", password);
+
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({ email, password }),
+    body,
   });
-  if (!res.ok) throw new Error("Login failed");
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Login failed");
+  }
+
   const data = await res.json();
-  setToken(data.access_token);
+  if (data.access_token) {
+    setToken(data.access_token);
+  }
   return data;
 }
 
@@ -80,7 +92,10 @@ export async function apiImportVoters(file) {
     },
     body: form,
   });
-  if (!res.ok) throw new Error("Failed to import voters");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to import voters");
+  }
   return res.json();
 }
 
@@ -94,7 +109,10 @@ export async function apiImportVoted(file) {
     },
     body: form,
   });
-  if (!res.ok) throw new Error("Failed to import voted list");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to import voted list");
+  }
   return res.json();
 }
 
@@ -105,34 +123,29 @@ export async function apiDeleteAllVoters() {
       ...authHeaders(),
     },
   });
-  if (!res.ok) throw new Error("Failed to delete voters");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to delete voters");
+  }
   return res.json();
 }
 
-// ADMIN — USERS
-
-export async function apiInviteUser(email, fullName, password, isAdmin = false) {
+export async function apiInviteUser({ full_name, email, password, is_admin }) {
   const res = await fetch(`${API_BASE}/admin/users/create`, {
     method: "POST",
     headers: {
-      ...authHeaders(),
       "Content-Type": "application/json",
+      ...authHeaders(),
     },
     body: JSON.stringify({
+      full_name,
       email,
-      full_name: fullName,
       password,
-      is_admin: isAdmin,
+      is_admin,
     }),
   });
-
   if (!res.ok) {
-    let text = "";
-    try {
-      text = await res.text();
-    } catch {
-      /* ignore */
-    }
+    const text = await res.text();
     throw new Error(text || "Failed to create user");
   }
   return res.json();
@@ -156,8 +169,22 @@ export async function apiUploadLogo(file) {
 
 // ADMIN — TAG OVERVIEW
 
-export async function apiGetTagOverview() {
-  const res = await fetch(`${API_BASE}/admin/tags/overview`, {
+export async function apiListUsers() {
+  const res = await fetch(`${API_BASE}/admin/users`, {
+    headers: {
+      ...authHeaders(),
+    },
+  });
+  if (!res.ok) throw new Error("Failed to load users");
+  return res.json();
+}
+
+export async function apiGetTagOverview(userId) {
+  const url = new URL(`${API_BASE}/admin/tags/overview`);
+  if (userId) {
+    url.searchParams.set("user_id", userId);
+  }
+  const res = await fetch(url.toString(), {
     headers: {
       ...authHeaders(),
     },
