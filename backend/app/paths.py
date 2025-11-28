@@ -1,13 +1,13 @@
 import os
 
-# This file is in: <project_root>/backend/app/paths.py
-# We want PROJECT_ROOT = <project_root> (the one that contains "backend" and "frontend").
+# This file lives at: <project_root>/backend/app/paths.py
+# We want:
+#   APP_DIR      = <project_root>/backend/app
+#   BACKEND_ROOT = <project_root>/backend
+#   UPLOADS_DIR  = <project_root>/backend/uploads
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Example: /opt/render/project/src
+APP_DIR = os.path.dirname(os.path.abspath(__file__))        # .../backend/app
+BACKEND_ROOT = os.path.dirname(APP_DIR)                     # .../backend
+UPLOADS_DIR = os.path.join(BACKEND_ROOT, "uploads")         # .../backend/uploads
 
-# All uploads (logos, etc.) go into <project_root>/uploads
-UPLOADS_DIR = os.path.join(PROJECT_ROOT, "uploads")
-
-# Make sure the directory exists at startup
 os.makedirs(UPLOADS_DIR, exist_ok=True)
