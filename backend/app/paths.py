@@ -12,7 +12,7 @@ UPLOADS_DIR = os.path.join(BACKEND_ROOT, "uploads")         # .../backend/upload
 
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.path.join(APP_DIR, "static")
 os.makedirs(STATIC_DIR, exist_ok=True)  # AUTO-CREATE STATIC DIRECTORY
 
 LOGO_PATH = os.path.join(STATIC_DIR, "logo.png")
