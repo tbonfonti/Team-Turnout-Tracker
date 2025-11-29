@@ -1,152 +1,132 @@
+# backend/app/routers/admin_routes.py
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
 import os
-import shutil
 import uuid
 
 from app.database import get_db
-from app import models, schemas
-from app.auth import get_current_admin
-from app.paths import UPLOADS_DIR
+from app.models import User, Voter, UserVoterTag, Branding
+from app.schemas import BrandingOut
+from app.deps import get_current_admin
 
-router = APIRouter(
-    prefix="/admin",
-    tags=["admin"],
-)
+router = APIRouter(prefix="/admin", tags=["Admin"])
 
-# This must match what you mount as /static in main.py
-# main.py uses StaticFiles(directory=UPLOADS_DIR, ...),
-# so we save logos into UPLOADS_DIR here.
-STATIC_DIR = UPLOADS_DIR
+# Directory where logos are stored
+STATIC_DIR = "static"
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 
-@router.get("/users", response_model=List[schemas.UserOut])
+# -----------------------------------------------------
+# Admin: List Users
+# -----------------------------------------------------
+@router.get("/users")
 def list_users(
     db: Session = Depends(get_db),
-    current_admin: models.User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
-    """
-    Return all users, sorted by id (admins + regular users).
-    """
-    return db.query(models.User).order_by(models.User.id).all()
-
-
-@router.get("/tags-overview")
-def get_tag_overview(
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    current_admin: models.User = Depends(get_current_admin),
-):
-    """
-    Admin-only endpoint to see how many voters each user has tagged.
-
-    If user_id is provided, limit results to that user (for filtering
-    in the admin UI).
-    """
-    query = (
-        db.query(
-            models.User.id.label("user_id"),
-            models.User.email.label("user_email"),
-            models.User.full_name.label("user_full_name"),
-            func.count(models.UserVoterTag.id).label("tag_count"),
-        )
-        .join(models.UserVoterTag, models.User.id == models.UserVoterTag.user_id)
-        .group_by(models.User.id, models.User.email, models.User.full_name)
-    )
-
-    if user_id is not None:
-        query = query.filter(models.User.id == user_id)
-
-    rows = query.all()
-
+    users = db.query(User).order_by(User.first_name, User.last_name).all()
     return [
         {
-            "user_id": row.user_id,
-            "user_email": row.user_email,
-            "user_full_name": row.user_full_name,
-            "tag_count": row.tag_count,
+            "id": u.id,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email,
+            "is_admin": u.is_admin,
         }
-        for row in rows
+        for u in users
     ]
 
 
-@router.get("/branding", response_model=schemas.BrandingOut)
-def get_branding(
+# -----------------------------------------------------
+# Admin: Tag Overview (with optional filtering by user)
+# -----------------------------------------------------
+@router.get("/tags-overview")
+def get_tag_overview(
+    user_id: int | None = None,
     db: Session = Depends(get_db),
-    current_admin: models.User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
     """
-    Get current branding (app name + logo URL).
-    Creates a default record if one does not exist.
+    Returns per-user tag counts.
+    If user_id is provided, only that user's stats are returned.
     """
-    branding = db.query(models.Branding).first()
-    if branding is None:
-        branding = models.Branding(app_name="Team Turnout Tracking")
-        db.add(branding)
-        db.commit()
-        db.refresh(branding)
-    return branding
+    query = (
+        db.query(
+            User.id,
+            User.first_name,
+            User.last_name,
+            func.count(UserVoterTag.voter_id).label("tag_count"),
+        )
+        .join(UserVoterTag, User.id == UserVoterTag.user_id, isouter=True)
+        .group_by(User.id)
+    )
+
+    if user_id:
+        query = query.filter(User.id == user_id)
+
+    results = query.all()
+
+    return [
+        {
+            "user_id": r.id,
+            "first_name": r.first_name,
+            "last_name": r.last_name,
+            "tag_count": r.tag_count,
+        }
+        for r in results
+    ]
 
 
-@router.post("/branding", response_model=schemas.BrandingOut)
-def update_branding(
-    branding_in: schemas.BrandingOut,
-    db: Session = Depends(get_db),
-    current_admin: models.User = Depends(get_current_admin),
-):
-    """
-    Update the app name. Logo URL is controlled by the logo upload endpoint.
-    """
-    branding = db.query(models.Branding).first()
-    if branding is None:
-        branding = models.Branding(app_name=branding_in.app_name)
-        db.add(branding)
-    else:
-        branding.app_name = branding_in.app_name
-
-    db.commit()
-    db.refresh(branding)
-    return branding
-
-
-@router.post("/branding/logo", response_model=schemas.BrandingOut)
+# -----------------------------------------------------
+# Admin: Upload Branding Logo
+#   POST /admin/branding/logo
+# -----------------------------------------------------
+@router.post("/branding/logo", response_model=BrandingOut)
 async def upload_logo(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_admin: models.User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
-    """
-    Upload a logo image, save it under STATIC_DIR (UPLOADS_DIR),
-    and update branding.logo_url to /static/<filename>.
-    """
-    filename = file.filename or "logo"
-    _, ext = os.path.splitext(filename)
-    ext = ext.lower()
+    ext = os.path.splitext(file.filename)[1]
+    if ext.lower() not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+        raise HTTPException(status_code=400, detail="Invalid file type.")
 
-    allowed_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-    if ext not in allowed_exts:
-        raise HTTPException(status_code=400, detail="Unsupported file type.")
+    filename = f"logo_{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(STATIC_DIR, filename)
 
-    unique_name = f"logo_{uuid.uuid4().hex}{ext}"
-    dest_path = os.path.join(STATIC_DIR, unique_name)
+    # Save the uploaded file
+    contents = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(contents)
 
-    try:
-        with open(dest_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    finally:
-        file.file.close()
-
-    branding = db.query(models.Branding).first()
-    if branding is None:
-        branding = models.Branding(app_name="Team Turnout Tracking")
+    # Upsert Branding row
+    branding = db.query(Branding).first()
+    if not branding:
+        branding = Branding()
         db.add(branding)
 
-    # This URL matches the StaticFiles mount in main.py: app.mount("/static", StaticFiles(directory=UPLOADS_DIR), name="static")
-    branding.logo_url = f"/static/{unique_name}"
+    branding.logo_url = f"/static/{filename}"
 
     db.commit()
     db.refresh(branding)
+
+    return branding
+
+
+# -----------------------------------------------------
+# Admin: Get Branding (logo, app name, colors)
+#   GET /admin/branding
+# -----------------------------------------------------
+@router.get("/branding", response_model=BrandingOut)
+def get_branding(
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    branding = db.query(Branding).first()
+    if not branding:
+        # sensible default if nothing is set yet
+        return BrandingOut(logo_url=None, app_name="Team Turnout Tracker")
+
     return branding
