@@ -102,32 +102,31 @@ def admin_tag_overview(
 async def upload_logo(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
+    admin=Depends(get_current_admin)
 ):
-    ext = os.path.splitext(file.filename)[1]
-    if ext.lower() not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-        raise HTTPException(status_code=400, detail="Invalid file type.")
+    # Ensure folder exists
+    os.makedirs(STATIC_DIR, exist_ok=True)
 
+    ext = os.path.splitext(file.filename)[1].lower()
     filename = f"logo_{uuid.uuid4().hex}{ext}"
+
     filepath = os.path.join(STATIC_DIR, filename)
 
-    # Save the uploaded file
-    contents = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(contents)
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    # Upsert Branding row
+    # Update DB
     branding = db.query(Branding).first()
     if not branding:
-        branding = Branding()
+        branding = Branding(logo_filename=filename)
         db.add(branding)
-
-    branding.logo_url = f"/static/{filename}"
+    else:
+        branding.logo_filename = filename
 
     db.commit()
     db.refresh(branding)
 
-    return branding
+    return {"logo_url": f"/static/{filename}"}
 
 
 # -----------------------------------------------------

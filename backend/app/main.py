@@ -21,9 +21,10 @@ app.add_middleware(
 )
 
 # Serve static files (logos, etc.) from /static
-# /static/<filename>  -->  <project_root>/backend/uploads/<filename>
-app.mount("/static", StaticFiles(directory=UPLOADS_DIR), name="static")
+# Absolute path to static folder
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Create tables if they don't exist yet
 Base.metadata.create_all(bind=engine)
 
