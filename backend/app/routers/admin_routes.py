@@ -24,16 +24,18 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 @router.get("/users")
 def list_users(
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ):
-    users = db.query(User).order_by(User.first_name, User.last_name).all()
+    """
+    Return a simple list of users for the admin filter dropdown.
+    Uses User.full_name (since User does not have first_name/last_name).
+    """
+    users = db.query(User).order_by(User.full_name).all()
     return [
         {
             "id": u.id,
-            "first_name": u.first_name,
-            "last_name": u.last_name,
+            "full_name": u.full_name,
             "email": u.email,
-            "is_admin": u.is_admin,
         }
         for u in users
     ]
@@ -42,41 +44,54 @@ def list_users(
 # -----------------------------------------------------
 # Admin: Tag Overview (with optional filtering by user)
 # -----------------------------------------------------
-@router.get("/tags-overview")
-def get_tag_overview(
-    user_id: int | None = None,
+@router.get("/tags/overview")
+def admin_tag_overview(
+    user_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ):
     """
-    Returns per-user tag counts.
-    If user_id is provided, only that user's stats are returned.
+    Admin view of all tags, optionally filtered by user_id.
+    Returns one row per (user, voter) tag.
     """
+    # Base query joining users, tags, and voters
     query = (
         db.query(
-            User.id,
-            User.first_name,
-            User.last_name,
-            func.count(UserVoterTag.voter_id).label("tag_count"),
+            UserVoterTag.user_id.label("user_id"),
+            User.full_name.label("user_full_name"),
+            User.email.label("user_email"),
+            Voter.id.label("voter_id"),
+            Voter.voter_id.label("voter_voter_id"),
+            Voter.first_name.label("voter_first_name"),
+            Voter.last_name.label("voter_last_name"),
+            Voter.has_voted.label("has_voted"),
         )
-        .join(UserVoterTag, User.id == UserVoterTag.user_id, isouter=True)
-        .group_by(User.id)
+        .join(User, User.id == UserVoterTag.user_id)
+        .join(Voter, Voter.id == UserVoterTag.voter_id)
     )
 
-    if user_id:
-        query = query.filter(User.id == user_id)
+    # Optional filter by user_id
+    if user_id is not None:
+        query = query.filter(UserVoterTag.user_id == user_id)
 
-    results = query.all()
+    results = query.order_by(User.full_name, Voter.last_name, Voter.first_name).all()
 
-    return [
-        {
-            "user_id": r.id,
-            "first_name": r.first_name,
-            "last_name": r.last_name,
-            "tag_count": r.tag_count,
-        }
-        for r in results
-    ]
+    overview = []
+    for row in results:
+        overview.append(
+            {
+                "user_id": row.user_id,
+                "user_full_name": row.user_full_name,
+                "user_email": row.user_email,
+                "voter_id": row.voter_id,
+                "voter_voter_id": row.voter_voter_id,
+                "first_name": row.voter_first_name,
+                "last_name": row.voter_last_name,
+                "has_voted": bool(row.has_voted),
+            }
+        )
+
+    return overview
 
 
 # -----------------------------------------------------
