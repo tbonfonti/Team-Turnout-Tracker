@@ -206,11 +206,18 @@ export async function apiDeleteAllVoters() {
 
 // ==== ADMIN – USER MANAGEMENT ====
 
-export async function apiInviteUser(email, fullName) {
+export async function apiInviteUser(email, fullName, password, isAdmin = false) {
+  // Despite the name, this actually *creates* the user directly (no email invite).
+  // The backend expects: { email, full_name, password, is_admin }.
   return fetchJson(`${API_BASE}/admin/users/create`, {
     method: "POST",
     headers: jsonHeaders(),
-    body: JSON.stringify({ email, full_name: fullName }),
+    body: JSON.stringify({
+      email,
+      full_name: fullName,
+      password,
+      is_admin: isAdmin,
+    }),
   });
 }
 
