@@ -40,9 +40,11 @@ async function fetchJson(url, options = {}) {
     try {
       const data = await res.json();
       if (data && data.detail) {
-        message = Array.isArray(data.detail)
-          ? data.detail.map((d) => d.msg || d).join(", ")
-          : data.detail;
+        if (Array.isArray(data.detail)) {
+          message = data.detail.map((d) => d.msg || d).join(", ");
+        } else {
+          message = data.detail;
+        }
       }
     } catch {
       // ignore parse errors
@@ -96,34 +98,58 @@ export async function apiGetMe() {
   });
 }
 
-// ==== ADMIN – USER MANAGEMENT (direct create) ====
+// ==== VOTER SEARCH ====
 
-export async function apiInviteUser(
-  email,
-  fullName,
-  password,
-  isAdmin = false
-) {
-  // Despite the legacy name, this now directly CREATES the user with a password.
-  return fetchJson(`${API_BASE}/admin/users/create`, {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify({
-      email,
-      full_name: fullName,
-      password,
-      is_admin: isAdmin,
-    }),
-  });
-}
+export async function apiSearchVoters(q, page = 1, pageSize = 25) {
+  const url = new URL(`${API_BASE}/voters/`);
+  if (q) url.searchParams.set("q", q);
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("page_size", String(pageSize));
 
-export async function apiListUsers() {
-  return fetchJson(`${API_BASE}/admin/users`, {
+  return fetchJson(url.toString(), {
     headers: authHeaders(),
   });
 }
 
-// ==== VOTERS (IMPORT / DELETE) ====
+// ==== TAGGING ====
+
+export async function apiTagVoter(voterId) {
+  return fetchJson(`${API_BASE}/tags/${voterId}`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+}
+
+export async function apiUntagVoter(voterId) {
+  // Backend untag route is DELETE /tags/{voter_id}
+  return fetchJson(`${API_BASE}/tags/${voterId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
+// ==== USER DASHBOARD ====
+
+export async function apiGetDashboard() {
+  return fetchJson(`${API_BASE}/tags/dashboard`, {
+    headers: authHeaders(),
+  });
+}
+
+export async function apiExportCallList() {
+  const res = await fetch(`${API_BASE}/tags/dashboard/export-call-list`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to export call list");
+  }
+
+  // Caller can create an object URL from this
+  return res.blob();
+}
+
+// ==== ADMIN – VOTER IMPORT / BULK ACTIONS ====
 
 export async function apiImportVoters(file) {
   const formData = new FormData();
@@ -172,6 +198,27 @@ export async function apiDeleteAllVoters() {
   return res.json();
 }
 
+// ==== ADMIN – USER MANAGEMENT (direct create, replaces email invite) ====
+
+export async function apiInviteUser(email, fullName, password, isAdmin = false) {
+  return fetchJson(`${API_BASE}/admin/users/create`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      email,
+      full_name: fullName,
+      password,
+      is_admin: isAdmin,
+    }),
+  });
+}
+
+export async function apiListUsers() {
+  return fetchJson(`${API_BASE}/admin/users`, {
+    headers: authHeaders(),
+  });
+}
+
 // ==== BRANDING ====
 
 export async function apiGetBranding() {
@@ -186,7 +233,7 @@ export async function apiUploadLogo(file) {
 
   const res = await fetch(`${API_BASE}/admin/logo`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: authHeaders(), // don't set Content-Type for FormData
     body: formData,
   });
 
@@ -197,20 +244,7 @@ export async function apiUploadLogo(file) {
   return res.json();
 }
 
-// ==== VOTERS (SEARCH + PAGINATION) ====
-
-export async function apiSearchVoters(q, page = 1, pageSize = 25) {
-  const url = new URL(`${API_BASE}/voters/`);
-  if (q) url.searchParams.set("q", q);
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("page_size", String(pageSize));
-
-  return fetchJson(url.toString(), {
-    headers: authHeaders(),
-  });
-}
-
-// ==== TAG OVERVIEW (WITH USER FILTER) ====
+// ==== ADMIN TAG OVERVIEW (per-user) ====
 
 export async function apiGetTagOverview(userId) {
   const url = new URL(`${API_BASE}/admin/tags/overview`);
