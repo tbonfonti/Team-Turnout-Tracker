@@ -8,8 +8,10 @@ import uuid
 from typing import Optional
 from app.database import get_db
 from app.models import User, Voter, UserVoterTag, Branding
-from app.schemas import BrandingOut
+from app.schemas import BrandingOut, InviteUserRequest, UserOut
 from app.deps import get_current_admin
+from app.auth import get_password_hash
+import shutil  # needed for logo upload
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -40,6 +42,37 @@ def list_users(
         for u in users
     ]
 
+# -----------------------------------------------------
+# Admin: Create User (direct, no email invite)
+#   POST /admin/users/create
+# -----------------------------------------------------
+@router.post("/users/create", response_model=UserOut)
+def create_user(
+    payload: InviteUserRequest,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+):
+    """
+    Create a new user directly (admin-only), with a password and optional admin flag.
+    This is what the frontend's Admin Panel "Create User" form calls.
+    """
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing:
+      raise HTTPException(
+          status_code=400,
+          detail="A user with this email already exists.",
+      )
+
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        hashed_password=get_password_hash(payload.password),
+        is_admin=payload.is_admin,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 # -----------------------------------------------------
 # Admin: Tag Overview (with optional filtering by user)
