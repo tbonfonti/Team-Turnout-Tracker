@@ -62,14 +62,10 @@ async function fetchJson(url, options = {}) {
 // ==== AUTH ====
 
 export async function apiLogin(email, password) {
-  const params = new URLSearchParams();
-  params.append("username", email);
-  params.append("password", password);
-
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email, password }),
   });
 
   if (!res.ok) {
@@ -200,7 +196,12 @@ export async function apiDeleteAllVoters() {
 
 // ==== ADMIN – USER MANAGEMENT (direct create, replaces email invite) ====
 
-export async function apiInviteUser(email, fullName, password, isAdmin = false) {
+export async function apiInviteUser(
+  email,
+  fullName,
+  password,
+  isAdmin = false
+) {
   return fetchJson(`${API_BASE}/admin/users/create`, {
     method: "POST",
     headers: jsonHeaders(),
