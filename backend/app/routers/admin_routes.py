@@ -58,7 +58,6 @@ def create_user(
 ):
     """
     Create a new user directly (admin-only), with a password and optional admin flag.
-    This is what the frontend's Admin Panel "Create User" form calls.
     """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
@@ -93,7 +92,6 @@ def admin_tag_overview(
     Admin view of all tags, optionally filtered by user_id.
     Returns one row per (user, voter) tag.
     """
-    # Base query joining users, tags, and voters
     query = (
         db.query(
             UserVoterTag.user_id.label("user_id"),
@@ -109,7 +107,6 @@ def admin_tag_overview(
         .join(Voter, Voter.id == UserVoterTag.voter_id)
     )
 
-    # Optional filter by user_id
     if user_id is not None:
         query = query.filter(UserVoterTag.user_id == user_id)
 
@@ -134,11 +131,45 @@ def admin_tag_overview(
 
 
 # -----------------------------------------------------
+# Helper: normalize header names for CSV
+# -----------------------------------------------------
+def _normalize_header(name: str) -> str:
+    return name.strip().lower().replace(" ", "").replace("_", "")
+
+
+def _detect_voter_id_header(fieldnames):
+    """
+    Given CSV fieldnames, try to find which one corresponds to voter_id.
+    Accepts things like: voter_id, VOTER_ID, Voter ID, voter id, VoterId, etc.
+    """
+    if not fieldnames:
+        return None
+
+    # Build a map of normalized -> original
+    header_map = {}
+    for original in fieldnames:
+        norm = _normalize_header(original)
+        header_map[norm] = original
+
+    for candidate_norm in ("voterid", "voter_id", "voteridentifier"):
+        if candidate_norm in header_map:
+            return header_map[candidate_norm]
+
+    # Fallback: if there's exactly one header containing "voter" and "id"
+    candidates = []
+    for original in fieldnames:
+        norm = _normalize_header(original)
+        if "voter" in norm and "id" in norm:
+            candidates.append(original)
+    if len(candidates) == 1:
+        return candidates[0]
+
+    return None
+
+
+# -----------------------------------------------------
 # Admin: Import voters (full list)
 #   POST /admin/voters/import
-#   Expects a CSV file. For each row:
-#     - if voter_id exists, update the voter fields
-#     - else, create a new Voter row
 # -----------------------------------------------------
 @router.post("/voters/import")
 async def import_voters(
@@ -146,7 +177,6 @@ async def import_voters(
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin),
 ):
-    # Read file content
     content = await file.read()
     text = content.decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(text))
@@ -154,13 +184,26 @@ async def import_voters(
     created = 0
     updated = 0
 
+    # We may also want a robust voter_id header here
+    voter_id_header = _detect_voter_id_header(reader.fieldnames)
+
     for row in reader:
-        voter_id = (
-            row.get("voter_id")
-            or row.get("VOTER_ID")
-            or row.get("VoterID")
-            or row.get("VOTERID")
-        )
+        # Determine voter_id value
+        voter_id_raw = None
+        if voter_id_header:
+            voter_id_raw = row.get(voter_id_header)
+        else:
+            # Try a few explicit keys as backup
+            voter_id_raw = (
+                row.get("voter_id")
+                or row.get("VOTER_ID")
+                or row.get("VoterID")
+                or row.get("VOTERID")
+            )
+
+        if not voter_id_raw:
+            continue
+        voter_id = str(voter_id_raw).strip()
         if not voter_id:
             continue
 
@@ -172,20 +215,45 @@ async def import_voters(
         else:
             updated += 1
 
-        # Optional fields
-        voter.first_name = row.get("first_name") or row.get("FIRST_NAME") or voter.first_name
-        voter.last_name = row.get("last_name") or row.get("LAST_NAME") or voter.last_name
-        voter.address = row.get("address") or row.get("ADDRESS") or voter.address
-        voter.city = row.get("city") or row.get("CITY") or voter.city
-        voter.state = row.get("state") or row.get("STATE") or voter.state
-        voter.zip_code = row.get("zip_code") or row.get("ZIP_CODE") or voter.zip_code
-        voter.registered_party = (
-            row.get("registered_party")
-            or row.get("REGISTERED_PARTY")
-            or voter.registered_party
-        )
-        voter.phone = row.get("phone") or row.get("PHONE") or voter.phone
-        voter.email = row.get("email") or row.get("EMAIL") or voter.email
+        # Optional fields (case-insensitive, with some aliases)
+        def get_field(*names):
+            for name in names:
+                if name in row and row[name]:
+                    return row[name]
+            # case-insensitive fall-back
+            for key, value in row.items():
+                if key.lower() in [n.lower() for n in names] and value:
+                    return value
+            return None
+
+        fn = get_field("first_name", "FIRST_NAME", "FirstName")
+        ln = get_field("last_name", "LAST_NAME", "LastName")
+        addr = get_field("address", "ADDRESS")
+        city = get_field("city", "CITY")
+        state = get_field("state", "STATE")
+        zip_code = get_field("zip_code", "ZIP_CODE", "zip", "ZIP")
+        party = get_field("registered_party", "REGISTERED_PARTY", "party", "PARTY")
+        phone = get_field("phone", "PHONE")
+        email = get_field("email", "EMAIL")
+
+        if fn is not None:
+            voter.first_name = fn
+        if ln is not None:
+            voter.last_name = ln
+        if addr is not None:
+            voter.address = addr
+        if city is not None:
+            voter.city = city
+        if state is not None:
+            voter.state = state
+        if zip_code is not None:
+            voter.zip_code = zip_code
+        if party is not None:
+            voter.registered_party = party
+        if phone is not None:
+            voter.phone = phone
+        if email is not None:
+            voter.email = email
 
     db.commit()
     return {"status": "ok", "created": created, "updated": updated}
@@ -194,8 +262,6 @@ async def import_voters(
 # -----------------------------------------------------
 # Admin: Import list of voters who have voted
 #   POST /admin/voters/import-voted
-#   Expects a CSV with at least a voter_id column.
-#   Marks has_voted = True for those voters.
 # -----------------------------------------------------
 @router.post("/voters/import-voted")
 async def import_voted(
@@ -210,13 +276,25 @@ async def import_voted(
     updated = 0
     not_found = 0
 
+    voter_id_header = _detect_voter_id_header(reader.fieldnames)
+
     for row in reader:
-        voter_id = (
-            row.get("voter_id")
-            or row.get("VOTER_ID")
-            or row.get("VoterID")
-            or row.get("VOTERID")
-        )
+        # Determine voter_id value
+        voter_id_raw = None
+        if voter_id_header:
+            voter_id_raw = row.get(voter_id_header)
+        else:
+            voter_id_raw = (
+                row.get("voter_id")
+                or row.get("VOTER_ID")
+                or row.get("VoterID")
+                or row.get("VOTERID")
+            )
+
+        if not voter_id_raw:
+            continue
+
+        voter_id = str(voter_id_raw).strip()
         if not voter_id:
             continue
 
@@ -243,7 +321,6 @@ async def upload_logo(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    # Ensure folder exists
     os.makedirs(STATIC_DIR, exist_ok=True)
 
     ext = os.path.splitext(file.filename)[1].lower()
@@ -254,7 +331,6 @@ async def upload_logo(
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Update DB
     branding = db.query(Branding).first()
     if not branding:
         branding = Branding(logo_filename=filename)
@@ -279,7 +355,6 @@ def get_branding(
 ):
     branding = db.query(Branding).first()
     if not branding:
-        # sensible default if nothing is set yet
         return BrandingOut(logo_url=None, app_name="Team Turnout Tracker")
 
     return branding
