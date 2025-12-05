@@ -240,7 +240,7 @@ export async function apiUploadLogo(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/admin/logo`, {
+  const res = await fetch(`${API_BASE}/admin/branding/logo`, {
     method: "POST",
     headers: authHeaders(), // don't set Content-Type for FormData
     body: formData,
