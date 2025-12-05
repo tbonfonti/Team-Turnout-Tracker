@@ -15,12 +15,9 @@ from app.models import User, Voter, UserVoterTag, Branding
 from app.schemas import BrandingOut, InviteUserRequest, UserOut
 from app.deps import get_current_admin
 from app.auth import get_password_hash
+from app.paths import STATIC_DIR, LOGO_PATH
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
-
-# Directory where logos are stored
-STATIC_DIR = "static"
-os.makedirs(STATIC_DIR, exist_ok=True)
 
 
 # -----------------------------------------------------
@@ -145,7 +142,6 @@ def _detect_voter_id_header(fieldnames):
     if not fieldnames:
         return None
 
-    # Build a map of normalized -> original
     header_map = {}
     for original in fieldnames:
         norm = _normalize_header(original)
@@ -155,7 +151,6 @@ def _detect_voter_id_header(fieldnames):
         if candidate_norm in header_map:
             return header_map[candidate_norm]
 
-    # Fallback: if there's exactly one header containing "voter" and "id"
     candidates = []
     for original in fieldnames:
         norm = _normalize_header(original)
@@ -184,16 +179,13 @@ async def import_voters(
     created = 0
     updated = 0
 
-    # We may also want a robust voter_id header here
     voter_id_header = _detect_voter_id_header(reader.fieldnames)
 
     for row in reader:
-        # Determine voter_id value
         voter_id_raw = None
         if voter_id_header:
             voter_id_raw = row.get(voter_id_header)
         else:
-            # Try a few explicit keys as backup
             voter_id_raw = (
                 row.get("voter_id")
                 or row.get("VOTER_ID")
@@ -215,12 +207,10 @@ async def import_voters(
         else:
             updated += 1
 
-        # Optional fields (case-insensitive, with some aliases)
         def get_field(*names):
             for name in names:
                 if name in row and row[name]:
                     return row[name]
-            # case-insensitive fall-back
             for key, value in row.items():
                 if key.lower() in [n.lower() for n in names] and value:
                     return value
@@ -279,7 +269,6 @@ async def import_voted(
     voter_id_header = _detect_voter_id_header(reader.fieldnames)
 
     for row in reader:
-        # Determine voter_id value
         voter_id_raw = None
         if voter_id_header:
             voter_id_raw = row.get(voter_id_header)
@@ -321,27 +310,30 @@ async def upload_logo(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
+    """
+    Save the uploaded file into the same static directory the app is serving,
+    and update Branding.logo_url so the frontend can display it.
+    """
     os.makedirs(STATIC_DIR, exist_ok=True)
 
-    ext = os.path.splitext(file.filename)[1].lower()
-    filename = f"logo_{uuid.uuid4().hex}{ext}"
-
-    filepath = os.path.join(STATIC_DIR, filename)
-
-    with open(filepath, "wb") as buffer:
+    # Save uploaded file to a fixed path (e.g. /static/logo.png)
+    with open(LOGO_PATH, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    # Update DB
     branding = db.query(Branding).first()
     if not branding:
-        branding = Branding(logo_filename=filename)
+        branding = Branding(
+            app_name="Team Turnout Tracking",
+            logo_url="/static/logo.png",
+        )
         db.add(branding)
     else:
-        branding.logo_filename = filename
+        branding.logo_url = "/static/logo.png"
 
     db.commit()
     db.refresh(branding)
-
-    return {"logo_url": f"/static/{filename}"}
+    return branding
 
 
 # -----------------------------------------------------
@@ -355,6 +347,7 @@ def get_branding(
 ):
     branding = db.query(Branding).first()
     if not branding:
+        # sensible default if nothing is set yet
         return BrandingOut(logo_url=None, app_name="Team Turnout Tracker")
 
     return branding
