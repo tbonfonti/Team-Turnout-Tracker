@@ -5,13 +5,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import os
 import uuid
+import csv
+import io
+import shutil
 from typing import Optional
+
 from app.database import get_db
 from app.models import User, Voter, UserVoterTag, Branding
 from app.schemas import BrandingOut, InviteUserRequest, UserOut
 from app.deps import get_current_admin
 from app.auth import get_password_hash
-import shutil  # needed for logo upload
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -42,6 +45,7 @@ def list_users(
         for u in users
     ]
 
+
 # -----------------------------------------------------
 # Admin: Create User (direct, no email invite)
 #   POST /admin/users/create
@@ -58,10 +62,10 @@ def create_user(
     """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
-      raise HTTPException(
-          status_code=400,
-          detail="A user with this email already exists.",
-      )
+        raise HTTPException(
+            status_code=400,
+            detail="A user with this email already exists.",
+        )
 
     user = User(
         email=payload.email,
@@ -74,8 +78,10 @@ def create_user(
     db.refresh(user)
     return user
 
+
 # -----------------------------------------------------
 # Admin: Tag Overview (with optional filtering by user)
+#   GET /admin/tags/overview
 # -----------------------------------------------------
 @router.get("/tags/overview")
 def admin_tag_overview(
@@ -128,6 +134,106 @@ def admin_tag_overview(
 
 
 # -----------------------------------------------------
+# Admin: Import voters (full list)
+#   POST /admin/voters/import
+#   Expects a CSV file. For each row:
+#     - if voter_id exists, update the voter fields
+#     - else, create a new Voter row
+# -----------------------------------------------------
+@router.post("/voters/import")
+async def import_voters(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+):
+    # Read file content
+    content = await file.read()
+    text = content.decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(text))
+
+    created = 0
+    updated = 0
+
+    for row in reader:
+        voter_id = (
+            row.get("voter_id")
+            or row.get("VOTER_ID")
+            or row.get("VoterID")
+            or row.get("VOTERID")
+        )
+        if not voter_id:
+            continue
+
+        voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
+        if voter is None:
+            voter = Voter(voter_id=voter_id)
+            db.add(voter)
+            created += 1
+        else:
+            updated += 1
+
+        # Optional fields
+        voter.first_name = row.get("first_name") or row.get("FIRST_NAME") or voter.first_name
+        voter.last_name = row.get("last_name") or row.get("LAST_NAME") or voter.last_name
+        voter.address = row.get("address") or row.get("ADDRESS") or voter.address
+        voter.city = row.get("city") or row.get("CITY") or voter.city
+        voter.state = row.get("state") or row.get("STATE") or voter.state
+        voter.zip_code = row.get("zip_code") or row.get("ZIP_CODE") or voter.zip_code
+        voter.registered_party = (
+            row.get("registered_party")
+            or row.get("REGISTERED_PARTY")
+            or voter.registered_party
+        )
+        voter.phone = row.get("phone") or row.get("PHONE") or voter.phone
+        voter.email = row.get("email") or row.get("EMAIL") or voter.email
+
+    db.commit()
+    return {"status": "ok", "created": created, "updated": updated}
+
+
+# -----------------------------------------------------
+# Admin: Import list of voters who have voted
+#   POST /admin/voters/import-voted
+#   Expects a CSV with at least a voter_id column.
+#   Marks has_voted = True for those voters.
+# -----------------------------------------------------
+@router.post("/voters/import-voted")
+async def import_voted(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+):
+    content = await file.read()
+    text = content.decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(text))
+
+    updated = 0
+    not_found = 0
+
+    for row in reader:
+        voter_id = (
+            row.get("voter_id")
+            or row.get("VOTER_ID")
+            or row.get("VoterID")
+            or row.get("VOTERID")
+        )
+        if not voter_id:
+            continue
+
+        voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
+        if voter is None:
+            not_found += 1
+            continue
+
+        if not voter.has_voted:
+            voter.has_voted = True
+            updated += 1
+
+    db.commit()
+    return {"status": "ok", "updated": updated, "not_found": not_found}
+
+
+# -----------------------------------------------------
 # Admin: Upload Branding Logo
 #   POST /admin/branding/logo
 # -----------------------------------------------------
@@ -135,7 +241,7 @@ def admin_tag_overview(
 async def upload_logo(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin)
+    admin=Depends(get_current_admin),
 ):
     # Ensure folder exists
     os.makedirs(STATIC_DIR, exist_ok=True)
