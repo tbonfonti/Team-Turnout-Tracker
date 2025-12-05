@@ -107,7 +107,7 @@ export async function apiSearchVoters(q, page = 1, pageSize = 25) {
   });
 }
 
-// ==== TAGGING ====
+// ==== TAGGING & DASHBOARD ====
 
 export async function apiTagVoter(voterId) {
   return fetchJson(`${API_BASE}/tags/${voterId}`, {
@@ -117,14 +117,11 @@ export async function apiTagVoter(voterId) {
 }
 
 export async function apiUntagVoter(voterId) {
-  // Backend untag route is DELETE /tags/{voter_id}
   return fetchJson(`${API_BASE}/tags/${voterId}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
 }
-
-// ==== USER DASHBOARD ====
 
 export async function apiGetDashboard() {
   return fetchJson(`${API_BASE}/tags/dashboard`, {
@@ -141,8 +138,19 @@ export async function apiExportCallList() {
     throw new Error("Failed to export call list");
   }
 
-  // Caller can create an object URL from this
   return res.blob();
+}
+
+// Update phone/email/note for a tagged voter
+export async function apiUpdateTaggedVoterContact(
+  voterId,
+  { phone, email, note }
+) {
+  return fetchJson(`${API_BASE}/tags/${voterId}/contact`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ phone, email, note }),
+  });
 }
 
 // ==== ADMIN – VOTER IMPORT / BULK ACTIONS ====
@@ -194,7 +202,7 @@ export async function apiDeleteAllVoters() {
   return res.json();
 }
 
-// ==== ADMIN – USER MANAGEMENT (direct create, replaces email invite) ====
+// ==== ADMIN – USER MANAGEMENT (direct create user) ====
 
 export async function apiInviteUser(
   email,
@@ -258,7 +266,6 @@ export async function apiGetTagOverview(userId) {
   });
 }
 
-// Convenience alias if any existing code expects this name
 export async function apiGetDashboardForUser(userId) {
   return apiGetTagOverview(userId);
 }

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { apiGetDashboard, apiExportCallList, apiUntagVoter } from "../api";
+import {
+  apiGetDashboard,
+  apiExportCallList,
+  apiUntagVoter,
+  apiUpdateTaggedVoterContact,
+} from "../api";
 
 export default function Dashboard() {
   const [voters, setVoters] = useState([]);
@@ -7,6 +12,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [untaggingId, setUntaggingId] = useState(null);
+
+  // edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function loadDashboard() {
     try {
@@ -54,12 +66,53 @@ export default function Dashboard() {
       setError("");
       setUntaggingId(voterId);
       await apiUntagVoter(voterId);
-      // Remove from local state so the row disappears immediately
       setVoters((prev) => prev.filter((v) => v.id !== voterId));
+      if (editingId === voterId) {
+        setEditingId(null);
+      }
     } catch (err) {
       setError(err.message || "Failed to untag voter");
     } finally {
       setUntaggingId(null);
+    }
+  }
+
+  function startEditing(voter) {
+    setEditingId(voter.id);
+    setEditPhone(voter.phone || "");
+    setEditEmail(voter.email || "");
+    setEditNote(voter.note || "");
+    setError("");
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setEditPhone("");
+    setEditEmail("");
+    setEditNote("");
+  }
+
+  async function saveEditing(voterId) {
+    try {
+      setSavingEdit(true);
+      setError("");
+      const updated = await apiUpdateTaggedVoterContact(voterId, {
+        phone: editPhone,
+        email: editEmail,
+        note: editNote,
+      });
+      // merge into local state
+      setVoters((prev) =>
+        prev.map((v) => (v.id === voterId ? { ...v, ...updated } : v))
+      );
+      setEditingId(null);
+      setEditPhone("");
+      setEditEmail("");
+      setEditNote("");
+    } catch (err) {
+      setError(err.message || "Failed to update contact info");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -94,29 +147,87 @@ export default function Dashboard() {
           <tr>
             <th>Name</th>
             <th>Voter ID</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Note</th>
             <th>Voted?</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {voters.map((v) => (
-            <tr key={v.id}>
-              <td>{`${v.first_name} ${v.last_name}`.trim()}</td>
-              <td>{v.voter_id}</td>
-              <td>{v.has_voted ? "✅" : "❌"}</td>
-              <td>
-                <button
-                  onClick={() => handleUntag(v.id)}
-                  disabled={untaggingId === v.id}
-                >
-                  {untaggingId === v.id ? "Untagging…" : "Untag"}
-                </button>
-              </td>
-            </tr>
-          ))}
+          {voters.map((v) => {
+            const isEditing = editingId === v.id;
+            return (
+              <tr key={v.id}>
+                <td>{`${v.first_name} ${v.last_name}`.trim()}</td>
+                <td>{v.voter_id}</td>
+                <td>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                    />
+                  ) : (
+                    v.phone || "—"
+                  )}
+                </td>
+                <td>
+                  {isEditing ? (
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                    />
+                  ) : (
+                    v.email || "—"
+                  )}
+                </td>
+                <td>
+                  {isEditing ? (
+                    <textarea
+                      value={editNote}
+                      onChange={(e) => setEditNote(e.target.value)}
+                      rows={2}
+                      style={{ width: "100%" }}
+                    />
+                  ) : (
+                    v.note || "—"
+                  )}
+                </td>
+                <td>{v.has_voted ? "✅" : "❌"}</td>
+                <td>
+                  {isEditing ? (
+                    <>
+                      <button
+                        onClick={() => saveEditing(v.id)}
+                        disabled={savingEdit}
+                      >
+                        {savingEdit ? "Saving…" : "Save"}
+                      </button>
+                      <button onClick={cancelEditing} disabled={savingEdit}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => startEditing(v)}>Edit</button>
+                      <button
+                        onClick={() => handleUntag(v.id)}
+                        disabled={untaggingId === v.id}
+                        style={{ marginLeft: "0.5rem" }}
+                      >
+                        {untaggingId === v.id ? "Untagging…" : "Untag"}
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
           {voters.length === 0 && (
             <tr>
-              <td colSpan={4} style={{ textAlign: "center" }}>
+              <td colSpan={7} style={{ textAlign: "center" }}>
                 No tagged voters yet
               </td>
             </tr>

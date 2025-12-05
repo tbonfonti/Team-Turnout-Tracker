@@ -31,6 +31,7 @@ class Voter(Base):
 
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
+    note = Column(String, nullable=True)
     has_voted = Column(Boolean, default=False)
 
     tags = relationship("UserVoterTag", back_populates="voter")
