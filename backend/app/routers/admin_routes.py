@@ -212,7 +212,7 @@ async def import_voters(
                 if name in row and row[name]:
                     return row[name]
             for key, value in row.items():
-                if key.lower() in [n.lower() for n in names] and value:
+                if key and value and key.lower() in [n.lower() for n in names]:
                     return value
             return None
 
@@ -222,6 +222,7 @@ async def import_voters(
         city = get_field("city", "CITY")
         state = get_field("state", "STATE")
         zip_code = get_field("zip_code", "ZIP_CODE", "zip", "ZIP")
+        county = get_field("county", "COUNTY")  # <-- NEW: county
         party = get_field("registered_party", "REGISTERED_PARTY", "party", "PARTY")
         phone = get_field("phone", "PHONE")
         email = get_field("email", "EMAIL")
@@ -238,6 +239,8 @@ async def import_voters(
             voter.state = state
         if zip_code is not None:
             voter.zip_code = zip_code
+        if county is not None:
+            voter.county = county
         if party is not None:
             voter.registered_party = party
         if phone is not None:
@@ -316,11 +319,9 @@ async def upload_logo(
     """
     os.makedirs(STATIC_DIR, exist_ok=True)
 
-    # Save uploaded file to a fixed path (e.g. /static/logo.png)
     with open(LOGO_PATH, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Update DB
     branding = db.query(Branding).first()
     if not branding:
         branding = Branding(
@@ -347,7 +348,6 @@ def get_branding(
 ):
     branding = db.query(Branding).first()
     if not branding:
-        # sensible default if nothing is set yet
         return BrandingOut(logo_url=None, app_name="Team Turnout Tracker")
 
     return branding

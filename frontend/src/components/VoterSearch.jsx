@@ -3,6 +3,7 @@ import { apiSearchVoters, apiTagVoter, apiUntagVoter } from "../api";
 
 export default function VoterSearch({ taggedIds, setTaggedIds }) {
   const [query, setQuery] = useState("");
+  const [field, setField] = useState("all");
   const [voters, setVoters] = useState([]);
   const [error, setError] = useState("");
 
@@ -12,7 +13,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
 
   async function loadVoters(newPage = page, newPageSize = pageSize) {
     try {
-      const res = await apiSearchVoters(query, newPage, newPageSize);
+      const res = await apiSearchVoters(query, newPage, newPageSize, field);
       setVoters(res.voters);
       setTotal(res.total);
       setPage(res.page);
@@ -41,6 +42,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         copy.add(voter.id);
         setTaggedIds(copy);
       }
+      await loadVoters(page, pageSize);
     } catch (err) {
       setError(err.message);
     }
@@ -48,6 +50,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
 
   function handleSearch(e) {
     e.preventDefault();
+    setPage(1);
     loadVoters(1, pageSize);
   }
 
@@ -60,10 +63,27 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       <h2>Voter Database</h2>
       <form onSubmit={handleSearch} className="inline-form">
         <input
-          placeholder="Search by name, address, city, party, ID, phone, email..."
+          placeholder="Search voters..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <select
+          value={field}
+          onChange={(e) => setField(e.target.value)}
+        >
+          <option value="all">All fields</option>
+          <option value="first_name">First name</option>
+          <option value="last_name">Last name</option>
+          <option value="voter_id">Voter ID</option>
+          <option value="address">Address</option>
+          <option value="city">City</option>
+          <option value="state">State</option>
+          <option value="zip_code">ZIP code</option>
+          <option value="county">County</option>
+          <option value="registered_party">Party</option>
+          <option value="phone">Phone</option>
+          <option value="email">Email</option>
+        </select>
         <button type="submit">Search</button>
       </form>
       {error && <div className="error">{error}</div>}
@@ -71,7 +91,6 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       <div
         className="pagination-controls"
         style={{
-          margin: "0.5rem 0",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -98,18 +117,20 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <option value={50}>50</option>
             </select>
           </label>
-          <button onClick={() => loadVoters(page - 1, pageSize)} disabled={page <= 1}>
+          <button
+            type="button"
+            onClick={() => loadVoters(page - 1, pageSize)}
+            disabled={page <= 1}
+          >
             Prev
           </button>
           <button
+            type="button"
             onClick={() => loadVoters(page + 1, pageSize)}
             disabled={page >= totalPages}
           >
             Next
           </button>
-          <span>
-            Page {page} of {totalPages}
-          </span>
         </div>
       </div>
 
@@ -123,6 +144,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
             <th>City</th>
             <th>State</th>
             <th>Zip</th>
+            <th>County</th>
             <th>Party</th>
             <th>Phone</th>
             <th>Email</th>
@@ -140,12 +162,13 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <td>{v.city}</td>
               <td>{v.state}</td>
               <td>{v.zip_code}</td>
+              <td>{v.county}</td>
               <td>{v.registered_party}</td>
               <td>{v.phone}</td>
               <td>{v.email}</td>
               <td>{v.has_voted ? "✅" : "❌"}</td>
               <td>
-                <button onClick={() => toggleTag(v)}>
+                <button type="button" onClick={() => toggleTag(v)}>
                   {taggedIds.has(v.id) ? "Untag" : "Tag"}
                 </button>
               </td>
@@ -153,7 +176,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
           ))}
           {voters.length === 0 && (
             <tr>
-              <td colSpan={12} style={{ textAlign: "center" }}>
+              <td colSpan={13} style={{ textAlign: "center" }}>
                 No voters found
               </td>
             </tr>

@@ -28,7 +28,8 @@ class Voter(Base):
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
     registered_party = Column(String, nullable=True)
-
+    
+    county = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     note = Column(String, nullable=True)

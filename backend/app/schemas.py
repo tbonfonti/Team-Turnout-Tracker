@@ -54,7 +54,7 @@ class VoterBase(BaseModel):
 
     phone: Optional[str] = None
     email: Optional[str] = None
-
+    county: Optional[str] = None
 
 class VoterOut(VoterBase):
     id: int
@@ -88,3 +88,4 @@ class TagOverviewItem(BaseModel):
     first_name: str
     last_name: str
     has_voted: bool
+    county: Optional[str] = None
