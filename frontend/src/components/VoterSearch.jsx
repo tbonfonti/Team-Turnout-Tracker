@@ -1,3 +1,4 @@
+// frontend/src/components/VoterSearch.jsx
 import { useEffect, useState } from "react";
 import { apiSearchVoters, apiTagVoter, apiUntagVoter } from "../api";
 
@@ -14,13 +15,13 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
   async function loadVoters(newPage = page, newPageSize = pageSize) {
     try {
       const res = await apiSearchVoters(query, newPage, newPageSize, field);
-      setVoters(res.voters);
-      setTotal(res.total);
-      setPage(res.page);
-      setPageSize(res.page_size);
+      setVoters(res.voters || []);
+      setTotal(res.total || 0);
+      setPage(res.page || newPage);
+      setPageSize(res.page_size || newPageSize);
       setError("");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to load voters");
     }
   }
 
@@ -44,7 +45,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       }
       await loadVoters(page, pageSize);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to update tag");
     }
   }
 
@@ -69,17 +70,19 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         />
         <select
           value={field}
-          onChange={(e) => setField(e.target.value)}
+          onChange={(e) => {
+            setField(e.target.value);
+          }}
         >
           <option value="all">All fields</option>
-          <option value="first_name">First name</option>
           <option value="last_name">Last name</option>
+          <option value="first_name">First name</option>
+          <option value="city">City</option>
+          <option value="county">County</option>
           <option value="voter_id">Voter ID</option>
           <option value="address">Address</option>
-          <option value="city">City</option>
           <option value="state">State</option>
           <option value="zip_code">ZIP code</option>
-          <option value="county">County</option>
           <option value="registered_party">Party</option>
           <option value="phone">Phone</option>
           <option value="email">Email</option>
@@ -142,9 +145,9 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
             <th>Voter ID</th>
             <th>Address</th>
             <th>City</th>
+            <th>County</th>
             <th>State</th>
             <th>Zip</th>
-            <th>County</th>
             <th>Party</th>
             <th>Phone</th>
             <th>Email</th>
@@ -160,9 +163,9 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <td>{v.voter_id}</td>
               <td>{v.address}</td>
               <td>{v.city}</td>
+              <td>{v.county}</td>
               <td>{v.state}</td>
               <td>{v.zip_code}</td>
-              <td>{v.county}</td>
               <td>{v.registered_party}</td>
               <td>{v.phone}</td>
               <td>{v.email}</td>

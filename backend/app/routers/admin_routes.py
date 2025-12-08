@@ -28,10 +28,6 @@ def list_users(
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin),
 ):
-    """
-    Return a simple list of users for the admin filter dropdown.
-    Uses User.full_name (since User does not have first_name/last_name).
-    """
     users = db.query(User).order_by(User.full_name).all()
     return [
         {
@@ -44,8 +40,7 @@ def list_users(
 
 
 # -----------------------------------------------------
-# Admin: Create User (direct, no email invite)
-#   POST /admin/users/create
+# Admin: Create User (direct)
 # -----------------------------------------------------
 @router.post("/users/create", response_model=UserOut)
 def create_user(
@@ -53,9 +48,6 @@ def create_user(
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin),
 ):
-    """
-    Create a new user directly (admin-only), with a password and optional admin flag.
-    """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(
@@ -76,8 +68,7 @@ def create_user(
 
 
 # -----------------------------------------------------
-# Admin: Tag Overview (with optional filtering by user)
-#   GET /admin/tags/overview
+# Admin: Tag Overview
 # -----------------------------------------------------
 @router.get("/tags/overview")
 def admin_tag_overview(
@@ -85,10 +76,6 @@ def admin_tag_overview(
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin),
 ):
-    """
-    Admin view of all tags, optionally filtered by user_id.
-    Returns one row per (user, voter) tag.
-    """
     query = (
         db.query(
             UserVoterTag.user_id.label("user_id"),
@@ -135,10 +122,6 @@ def _normalize_header(name: str) -> str:
 
 
 def _detect_voter_id_header(fieldnames):
-    """
-    Given CSV fieldnames, try to find which one corresponds to voter_id.
-    Accepts things like: voter_id, VOTER_ID, Voter ID, voter id, VoterId, etc.
-    """
     if not fieldnames:
         return None
 
@@ -164,7 +147,6 @@ def _detect_voter_id_header(fieldnames):
 
 # -----------------------------------------------------
 # Admin: Import voters (full list)
-#   POST /admin/voters/import
 # -----------------------------------------------------
 @router.post("/voters/import")
 async def import_voters(
@@ -212,7 +194,7 @@ async def import_voters(
                 if name in row and row[name]:
                     return row[name]
             for key, value in row.items():
-                if key and value and key.lower() in [n.lower() for n in names]:
+                if key.lower() in [n.lower() for n in names] and value:
                     return value
             return None
 
@@ -222,7 +204,7 @@ async def import_voters(
         city = get_field("city", "CITY")
         state = get_field("state", "STATE")
         zip_code = get_field("zip_code", "ZIP_CODE", "zip", "ZIP")
-        county = get_field("county", "COUNTY")  # <-- NEW: county
+        county = get_field("county", "COUNTY")
         party = get_field("registered_party", "REGISTERED_PARTY", "party", "PARTY")
         phone = get_field("phone", "PHONE")
         email = get_field("email", "EMAIL")
@@ -253,8 +235,7 @@ async def import_voters(
 
 
 # -----------------------------------------------------
-# Admin: Import list of voters who have voted
-#   POST /admin/voters/import-voted
+# Admin: Import voters who have voted
 # -----------------------------------------------------
 @router.post("/voters/import-voted")
 async def import_voted(
@@ -305,7 +286,6 @@ async def import_voted(
 
 # -----------------------------------------------------
 # Admin: Upload Branding Logo
-#   POST /admin/branding/logo
 # -----------------------------------------------------
 @router.post("/branding/logo", response_model=BrandingOut)
 async def upload_logo(
@@ -313,10 +293,6 @@ async def upload_logo(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    """
-    Save the uploaded file into the same static directory the app is serving,
-    and update Branding.logo_url so the frontend can display it.
-    """
     os.makedirs(STATIC_DIR, exist_ok=True)
 
     with open(LOGO_PATH, "wb") as buffer:
@@ -338,8 +314,7 @@ async def upload_logo(
 
 
 # -----------------------------------------------------
-# Admin: Get Branding (logo, app name, colors)
-#   GET /admin/branding
+# Admin: Get Branding
 # -----------------------------------------------------
 @router.get("/branding", response_model=BrandingOut)
 def get_branding(

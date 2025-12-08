@@ -1,11 +1,14 @@
+# backend/app/routers/voter_routes.py
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
 from typing import Optional
 
-from ..database import get_db
-from ..deps import get_current_user
-from ..models import Voter
-from ..schemas import VoterSearchResponse
+from app.database import get_db
+from app.deps import get_current_user
+from app.models import Voter
+from app.schemas import VoterSearchResponse
 
 router = APIRouter(prefix="/voters", tags=["voters"])
 
@@ -13,7 +16,10 @@ router = APIRouter(prefix="/voters", tags=["voters"])
 @router.get("/", response_model=VoterSearchResponse)
 def search_voters(
     q: Optional[str] = Query(None),
-    field: Optional[str] = Query(None, description="Which field to search by"),
+    field: Optional[str] = Query(
+        None,
+        description="Which field to search by (e.g. last_name, city, voter_id). Use 'all' or omit for broad search.",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -22,9 +28,14 @@ def search_voters(
     """
     Search voters.
 
-    If `field` is provided, only that column is searched (case-insensitive).
-    Otherwise, a broad multi-field search is performed.
+    Performance notes:
+    - For indexed fields (last_name, city, county) we use lower(...) and ILIKE,
+      which allows use of the GIN trigram indexes we created.
+    - For 'all' search, we still OR across multiple columns, but we do it using
+      lower(...) so the same indexes can help when the query matches those fields.
     """
+
+    # Normalize page_size
     if page_size not in (10, 25, 50):
         if page_size < 10:
             page_size = 10
@@ -36,54 +47,63 @@ def search_voters(
     base_query = db.query(Voter)
 
     if q:
-        q_like = f"%{q}%"
+        q_lower = q.lower()
+        q_like = f"%{q_lower}%"
 
+        # Map of allowed field names to lower(column) expressions
         field_map = {
-            "first_name": Voter.first_name,
-            "last_name": Voter.last_name,
-            "address": Voter.address,
-            "city": Voter.city,
-            "state": Voter.state,
-            "zip_code": Voter.zip_code,
-            "county": Voter.county,
-            "registered_party": Voter.registered_party,
-            "phone": Voter.phone,
-            "email": Voter.email,
-            "voter_id": Voter.voter_id,
+            "first_name": func.lower(Voter.first_name),
+            "last_name": func.lower(Voter.last_name),
+            "address": func.lower(Voter.address),
+            "city": func.lower(Voter.city),
+            "state": func.lower(Voter.state),
+            "zip_code": func.lower(Voter.zip_code),
+            "registered_party": func.lower(Voter.registered_party),
+            "phone": func.lower(Voter.phone),
+            "email": func.lower(Voter.email),
+            "voter_id": func.lower(Voter.voter_id),
+            "county": func.lower(Voter.county),
         }
 
-        if field:
+        if field and field != "all":
             key = field.strip().lower()
             column = field_map.get(key)
             if column is not None:
-                base_query = base_query.filter(column.ilike(q_like))
+                base_query = base_query.filter(column.like(q_like))
             else:
+                # Unknown field -> safe fallback to broad search
                 base_query = base_query.filter(
-                    (Voter.first_name.ilike(q_like))
-                    | (Voter.last_name.ilike(q_like))
-                    | (Voter.address.ilike(q_like))
-                    | (Voter.city.ilike(q_like))
-                    | (Voter.state.ilike(q_like))
-                    | (Voter.zip_code.ilike(q_like))
-                    | (Voter.county.ilike(q_like))
-                    | (Voter.registered_party.ilike(q_like))
-                    | (Voter.email.ilike(q_like))
-                    | (Voter.phone.ilike(q_like))
-                    | (Voter.voter_id.ilike(q_like))
+                    or_(
+                        func.lower(Voter.first_name).like(q_like),
+                        func.lower(Voter.last_name).like(q_like),
+                        func.lower(Voter.address).like(q_like),
+                        func.lower(Voter.city).like(q_like),
+                        func.lower(Voter.state).like(q_like),
+                        func.lower(Voter.zip_code).like(q_like),
+                        func.lower(Voter.registered_party).like(q_like),
+                        func.lower(Voter.email).like(q_like),
+                        func.lower(Voter.phone).like(q_like),
+                        func.lower(Voter.voter_id).like(q_like),
+                        func.lower(Voter.county).like(q_like),
+                    )
                 )
         else:
+            # Broad "all fields" search (still using lower(...) so indexes on
+            # last_name/city/county help if the query matches them)
             base_query = base_query.filter(
-                (Voter.first_name.ilike(q_like))
-                | (Voter.last_name.ilike(q_like))
-                | (Voter.address.ilike(q_like))
-                | (Voter.city.ilike(q_like))
-                | (Voter.state.ilike(q_like))
-                | (Voter.zip_code.ilike(q_like))
-                | (Voter.county.ilike(q_like))
-                | (Voter.registered_party.ilike(q_like))
-                | (Voter.email.ilike(q_like))
-                | (Voter.phone.ilike(q_like))
-                | (Voter.voter_id.ilike(q_like))
+                or_(
+                    func.lower(Voter.first_name).like(q_like),
+                    func.lower(Voter.last_name).like(q_like),
+                    func.lower(Voter.address).like(q_like),
+                    func.lower(Voter.city).like(q_like),
+                    func.lower(Voter.state).like(q_like),
+                    func.lower(Voter.zip_code).like(q_like),
+                    func.lower(Voter.registered_party).like(q_like),
+                    func.lower(Voter.email).like(q_like),
+                    func.lower(Voter.phone).like(q_like),
+                    func.lower(Voter.voter_id).like(q_like),
+                    func.lower(Voter.county).like(q_like),
+                )
             )
 
     total = base_query.count()
