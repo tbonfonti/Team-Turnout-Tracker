@@ -34,42 +34,18 @@ export default function TermsOfService({ onAgree, onDisagree }) {
           unauthorized individual.
         </p>
 
-        <h3>Data Privacy</h3>
         <p>
-          You acknowledge that this system may contain sensitive voter
-          information, including contact details and voting status. You agree to
-          handle all data in accordance with applicable privacy laws and your
-          organization&apos;s data-handling policies. You will not export,
-          distribute, or otherwise misuse this data.
-        </p>
-
-        <h3>Security</h3>
-        <p>
-          You agree to keep your login credentials confidential and to notify an
-          administrator immediately if you suspect that your account has been
-          compromised. You will not attempt to bypass security controls or gain
-          access to data or functionality you are not authorized to use.
-        </p>
-
-        <h3>Accuracy and Use of Information</h3>
-        <p>
-          You understand that voter data may not be fully accurate or complete.
-          You agree to use your best judgment when acting on information in this
-          system and to report any suspected data issues to an administrator.
-        </p>
-
-        <h3>Compliance</h3>
-        <p>
-          You are responsible for ensuring that your use of this system complies
-          with all applicable federal, state, and local laws, as well as
-          internal campaign or organizational policies.
-        </p>
-
-        <h3>Revocation of Access</h3>
-        <p>
-          The campaign or system administrator reserves the right to revoke or
-          suspend access to this application at any time for any reason,
-          including suspected misuse, security concerns, or policy violations.
+            By selecting “I Accept”, you indicate that you are an authorized user of Team Turnout Tracker.     
+ 
+            By selecting “I Accept”, you acknowledge that the data contained in Team Turnout Tracker is the sole property of the campaign. 
+ 
+            By selecting “I Accept”, you agree that you will not permit the use or copying of the voter information by any person not working under the direction of the campaign.      
+ 
+            By selecting “I Accept”, you agree that you are utilizing the information contained in Team Turnout Tracker for campaign political purposes only.  In addition, you agree that under no circumstances will you use this information for commercial purposes.      
+ 
+            By selecting “I Accept”, you agree not to sell any part of the information contained in Team Turnout Tracker.  
+ 
+            By selecting “I Accept” you acknowledge that any malicious use of Team Turnout Tracker will result in the immediate termination of your user account and may result in further penalties.
         </p>
 
         <h3>Acceptance of Terms</h3>
@@ -88,14 +64,14 @@ export default function TermsOfService({ onAgree, onDisagree }) {
           type="button"
           onClick={onDisagree}
           style={{
-            backgroundColor: "#f5f5f5",
+            backgroundColor: "#313131",
             border: "1px solid #ccc",
             padding: "0.5rem 1rem",
             borderRadius: "4px",
             cursor: "pointer",
           }}
         >
-          I do not Agree
+          I Do Not Agree
         </button>
         <button
           type="button"
@@ -109,7 +85,7 @@ export default function TermsOfService({ onAgree, onDisagree }) {
             cursor: "pointer",
           }}
         >
-          Agree
+          I Agree
         </button>
       </div>
     </div>
