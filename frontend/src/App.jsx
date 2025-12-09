@@ -1,8 +1,10 @@
+// frontend/src/App.jsx
 import { useEffect, useState } from "react";
 import LoginForm from "./components/LoginForm";
 import AdminPanel from "./components/AdminPanel";
 import VoterSearch from "./components/VoterSearch";
 import Dashboard from "./components/Dashboard";
+import TermsOfService from "./components/TermsOfService";
 import { apiLogin, setToken, apiGetBranding } from "./api";
 
 export default function App() {
@@ -13,6 +15,7 @@ export default function App() {
     logo_url: null,
   });
   const [taggedIds, setTaggedIds] = useState(new Set());
+  const [hasAcceptedTos, setHasAcceptedTos] = useState(false);
 
   const apiBase = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
@@ -45,20 +48,40 @@ export default function App() {
         email,
         is_admin: data?.is_admin ?? false,
       });
+      // Force ToS every login (session-based)
+      setHasAcceptedTos(false);
     } catch (err) {
       console.error("Login error:", err);
       setToken(null);
       setUser(null);
+      setTaggedIds(new Set());
+      setHasAcceptedTos(false);
       setAuthError(err.message || "Login failed");
     }
   }
 
-  // Handle logout
+  // Handle logout (explicit user action)
   function handleLogout() {
     setToken(null);
     setUser(null);
     setTaggedIds(new Set());
+    setHasAcceptedTos(false);
     setAuthError("");
+  }
+
+  function handleTosAgree() {
+    setHasAcceptedTos(true);
+  }
+
+  function handleTosDisagree() {
+    // Clear session but show the required message on the login screen
+    setToken(null);
+    setUser(null);
+    setTaggedIds(new Set());
+    setHasAcceptedTos(false);
+    setAuthError(
+      "You must agree to continue. You are being returned to the log-in screen."
+    );
   }
 
   // Build full logo URL pointing at backend, not frontend
@@ -84,7 +107,7 @@ export default function App() {
             {branding?.app_name || "Team Turnout Tracking"}
           </h1>
         </div>
-        {user && (
+        {user && hasAcceptedTos && (
           <button className="logout-button" onClick={handleLogout}>
             Log out
           </button>
@@ -92,9 +115,24 @@ export default function App() {
       </header>
 
       <main className="main">
-        {!user ? (
-          <LoginForm onLogin={handleLogin} error={authError} />
-        ) : (
+        {/* No user yet -> show login */}
+        {!user && (
+          <LoginForm
+            onLogin={handleLogin}
+            error={authError}
+          />
+        )}
+
+        {/* User logged in but has NOT accepted ToS -> show ToS gate */}
+        {user && !hasAcceptedTos && (
+          <TermsOfService
+            onAgree={handleTosAgree}
+            onDisagree={handleTosDisagree}
+          />
+        )}
+
+        {/* User logged in AND has accepted ToS -> show main app */}
+        {user && hasAcceptedTos && (
           <>
             <Dashboard />
             <VoterSearch taggedIds={taggedIds} setTaggedIds={setTaggedIds} />
