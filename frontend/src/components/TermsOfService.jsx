@@ -35,17 +35,22 @@ export default function TermsOfService({ onAgree, onDisagree }) {
         </p>
 
         <p>
-            By selecting “I Accept”, you indicate that you are an authorized user of Team Turnout Tracker.     
- 
-            By selecting “I Accept”, you acknowledge that the data contained in Team Turnout Tracker is the sole property of the campaign. 
- 
-            By selecting “I Accept”, you agree that you will not permit the use or copying of the voter information by any person not working under the direction of the campaign.      
- 
-            By selecting “I Accept”, you agree that you are utilizing the information contained in Team Turnout Tracker for campaign political purposes only.  In addition, you agree that under no circumstances will you use this information for commercial purposes.      
- 
-            By selecting “I Accept”, you agree not to sell any part of the information contained in Team Turnout Tracker.  
- 
-            By selecting “I Accept” you acknowledge that any malicious use of Team Turnout Tracker will result in the immediate termination of your user account and may result in further penalties.
+            By selecting “I Agree”, you indicate that you are an authorized user of Team Turnout Tracker.     
+        </p>
+        <p>
+            By selecting “I Agree”, you acknowledge that the data contained in Team Turnout Tracker is the sole property of the campaign. 
+        </p>
+        <p>
+            By selecting “I Agree”, you agree that you will not permit the use or copying of the voter information by any person not working under the direction of the campaign.      
+        </p>
+        <p>
+            By selecting “I Agree”, you agree that you are utilizing the information contained in Team Turnout Tracker for campaign political purposes only.  In addition, you agree that under no circumstances will you use this information for commercial purposes.      
+        </p>
+        <p>
+            By selecting “I Agree”, you agree not to sell any part of the information contained in Team Turnout Tracker.  
+        </p>
+        <p>
+            By selecting “I Agree” you acknowledge that any malicious use of Team Turnout Tracker will result in the immediate termination of your user account and may result in further penalties.
         </p>
 
         <h3>Acceptance of Terms</h3>
