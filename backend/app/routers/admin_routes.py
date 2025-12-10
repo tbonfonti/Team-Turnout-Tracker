@@ -208,6 +208,7 @@ async def import_voters(
         party = get_field("registered_party", "REGISTERED_PARTY", "party", "PARTY")
         phone = get_field("phone", "PHONE")
         email = get_field("email", "EMAIL")
+        precinct = get_field("precinct", "PRECINCT")
 
         if fn is not None:
             voter.first_name = fn
@@ -229,6 +230,8 @@ async def import_voters(
             voter.phone = phone
         if email is not None:
             voter.email = email
+        if precinct is not None:
+            voter.precinct = precinct
 
     db.commit()
     return {"status": "ok", "created": created, "updated": updated}

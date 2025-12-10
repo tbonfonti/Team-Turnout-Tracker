@@ -34,6 +34,7 @@ class Voter(Base):
     email = Column(String, nullable=True)
     note = Column(String, nullable=True)
     has_voted = Column(Boolean, default=False)
+    precinct = Column(String, index=True, nullable=True)
 
     tags = relationship("UserVoterTag", back_populates="voter")
 

@@ -149,6 +149,7 @@ export default function Dashboard() {
             <th>Voter ID</th>
             <th>Phone</th>
             <th>Email</th>
+            <th>Precinct</th>
             <th>Note</th>
             <th>Voted?</th>
             <th>Actions</th>
@@ -183,6 +184,7 @@ export default function Dashboard() {
                     v.email || "—"
                   )}
                 </td>
+                <td>{v.precinct}</td>
                 <td>
                   {isEditing ? (
                     <textarea

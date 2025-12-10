@@ -21,6 +21,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       setPageSize(res.page_size || newPageSize);
       setError("");
     } catch (err) {
+      console.error("Error loading voters:", err);
       setError(err.message || "Failed to load voters");
     }
   }
@@ -45,7 +46,8 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
       }
       await loadVoters(page, pageSize);
     } catch (err) {
-      setError(err.message || "Failed to update tag");
+      console.error("Error tagging voter:", err);
+      setError(err.message || "Tag action failed");
     }
   }
 
@@ -70,17 +72,16 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         />
         <select
           value={field}
-          onChange={(e) => {
-            setField(e.target.value);
-          }}
+          onChange={(e) => setField(e.target.value)}
         >
           <option value="all">All fields</option>
-          <option value="last_name">Last name</option>
           <option value="first_name">First name</option>
-          <option value="city">City</option>
-          <option value="county">County</option>
+          <option value="last_name">Last name</option>
           <option value="voter_id">Voter ID</option>
           <option value="address">Address</option>
+          <option value="city">City</option>
+          <option value="county">County</option>
+          <option value="precinct">Precinct</option>
           <option value="state">State</option>
           <option value="zip_code">ZIP code</option>
           <option value="registered_party">Party</option>
@@ -89,6 +90,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         </select>
         <button type="submit">Search</button>
       </form>
+
       {error && <div className="error">{error}</div>}
 
       <div
@@ -120,15 +122,10 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <option value={50}>50</option>
             </select>
           </label>
-          <button
-            type="button"
-            onClick={() => loadVoters(page - 1, pageSize)}
-            disabled={page <= 1}
-          >
+          <button onClick={() => loadVoters(page - 1, pageSize)} disabled={page <= 1}>
             Prev
           </button>
           <button
-            type="button"
             onClick={() => loadVoters(page + 1, pageSize)}
             disabled={page >= totalPages}
           >
@@ -146,6 +143,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
             <th>Address</th>
             <th>City</th>
             <th>County</th>
+            <th>Precinct</th>
             <th>State</th>
             <th>Zip</th>
             <th>Party</th>
@@ -164,6 +162,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <td>{v.address}</td>
               <td>{v.city}</td>
               <td>{v.county}</td>
+              <td>{v.precinct}</td>
               <td>{v.state}</td>
               <td>{v.zip_code}</td>
               <td>{v.registered_party}</td>
@@ -171,7 +170,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
               <td>{v.email}</td>
               <td>{v.has_voted ? "✅" : "❌"}</td>
               <td>
-                <button type="button" onClick={() => toggleTag(v)}>
+                <button onClick={() => toggleTag(v)}>
                   {taggedIds.has(v.id) ? "Untag" : "Tag"}
                 </button>
               </td>
@@ -179,7 +178,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
           ))}
           {voters.length === 0 && (
             <tr>
-              <td colSpan={13} style={{ textAlign: "center" }}>
+              <td colSpan={14} style={{ textAlign: "center" }}>
                 No voters found
               </td>
             </tr>

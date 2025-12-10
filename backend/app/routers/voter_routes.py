@@ -94,6 +94,7 @@ def search_voters(
                 "email": Voter.email,
                 "voter_id": Voter.voter_id,
                 "county": Voter.county,
+                "precinct": Voter.precinct,
             }
 
             normalized_field = (field or "all").strip().lower()
@@ -130,6 +131,7 @@ def search_voters(
                             Voter.phone.ilike(like_pattern),
                             Voter.voter_id.ilike(like_pattern),
                             Voter.county.ilike(like_pattern),
+                            Voter.precinct.ilike(like_pattern),
                         )
                     )
 
