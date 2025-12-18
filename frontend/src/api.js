@@ -284,3 +284,7 @@ export async function apiUpdateUserCountyAccess(userId, allowedCounties) {
     }),
   });
 }
+// Backwards-compatible alias used by Dashboard.jsx
+export async function apiExportCallList() {
+  return apiExportTags();
+}
