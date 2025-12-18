@@ -11,7 +11,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authError, setAuthError] = useState("");
   const [branding, setBranding] = useState({
-    app_name: "Team Turnout Tracking",
+    app_name: "BOOTS ON THE GROUND",
     logo_url: null,
   });
   const [taggedIds, setTaggedIds] = useState(new Set());
