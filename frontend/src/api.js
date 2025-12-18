@@ -284,3 +284,9 @@ export async function apiUpdateUserCountyAccess(userId, allowedCounties) {
 export async function apiExportCallList() {
   return apiExportTags();
 }
+// Backwards-compatible alias used by AdminPanel.jsx
+export async function apiGetMe() {
+  return fetchJson(`${API_BASE}/auth/me`, {
+    headers: authHeaders(),
+  });
+}
