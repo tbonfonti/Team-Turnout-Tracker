@@ -11,6 +11,12 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 
+# ✅ FIX: this is required by backend/app/deps.py (and/or auth_routes)
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
