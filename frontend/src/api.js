@@ -62,13 +62,15 @@ function jsonHeaders() {
 // ==== AUTH ====
 
 export async function apiLogin(email, password) {
-  const body = new URLSearchParams();
-  body.set("username", email);
-  body.set("password", password);
-
   const resp = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
-    body,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+    }),
   });
 
   if (!resp.ok) {
@@ -76,7 +78,10 @@ export async function apiLogin(email, password) {
     try {
       const data = await resp.json();
       if (data && data.detail) {
-        msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+        msg =
+          typeof data.detail === "string"
+            ? data.detail
+            : JSON.stringify(data.detail);
       }
     } catch (e) {}
     throw new Error(msg);
@@ -88,15 +93,6 @@ export async function apiLogin(email, password) {
   return data;
 }
 
-export async function apiLogout() {
-  setToken(null);
-}
-
-export async function apiGetMe() {
-  return fetchJson(`${API_BASE}/auth/me`, {
-    headers: authHeaders(),
-  });
-}
 
 // ==== VOTERS ====
 
