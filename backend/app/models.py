@@ -55,5 +55,5 @@ class Branding(Base):
     __tablename__ = "branding"
 
     id = Column(Integer, primary_key=True, index=True)
-    app_name = Column(String, default="Team Turnout Tracking")
+    app_name = Column(String, default="BOOTS ON THE GROUND")
     logo_url = Column(String, nullable=True)
