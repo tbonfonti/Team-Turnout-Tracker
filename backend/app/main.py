@@ -9,7 +9,7 @@ from . import models  # ensure models are imported so tables are registered
 from .routers import auth_routes, voter_routes, admin_routes, tag_routes, branding_routes
 from .paths import UPLOADS_DIR  # <--- shared uploads directory
 
-app = FastAPI(title="Team Turnout Tracking")
+app = FastAPI(title="BOOTS ON THE GROUND")  # <--- Application title
 
 # CORS (you can tighten origins later to just your frontend domain)
 app.add_middleware(
