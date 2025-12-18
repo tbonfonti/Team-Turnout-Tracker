@@ -8,312 +8,345 @@ import uuid
 import csv
 import io
 import shutil
-from typing import Optional
+from typing import Optional, List
 
 from app.database import get_db
-from app.models import User, Voter, UserVoterTag, Branding
-from app.schemas import BrandingOut, InviteUserRequest, UserOut
+from app.models import User, Voter, UserVoterTag, Branding, UserCountyAccess
+from app.schemas import BrandingOut, InviteUserRequest, UserOut, CountyAccessUpdate
 from app.deps import get_current_admin
-from app.auth import get_password_hash
-from app.paths import STATIC_DIR, LOGO_PATH
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 # -----------------------------------------------------
-# Admin: List Users
+# Helper: ensure uploads directory exists
 # -----------------------------------------------------
-@router.get("/users")
+def ensure_uploads_dir():
+    uploads_dir = "uploads"
+    if not os.path.exists(uploads_dir):
+        os.makedirs(uploads_dir)
+    return uploads_dir
+
+
+# -----------------------------------------------------
+# Admin: List users
+# -----------------------------------------------------
+@router.get("/users", response_model=list[UserOut])
 def list_users(
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
-    users = db.query(User).order_by(User.full_name).all()
-    return [
-        {
-            "id": u.id,
-            "full_name": u.full_name,
-            "email": u.email,
-        }
-        for u in users
-    ]
+    users = db.query(User).order_by(User.email.asc()).all()
+    return users
 
 
 # -----------------------------------------------------
-# Admin: Create User (direct)
+# Admin: Create user (invite replacement)
 # -----------------------------------------------------
-@router.post("/users/create", response_model=UserOut)
+@router.post("/users", response_model=UserOut)
 def create_user(
     payload: InviteUserRequest,
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this email already exists.",
-        )
+        raise HTTPException(status_code=400, detail="User with this email already exists")
 
-    user = User(
+    from app.auth import get_password_hash  # imported lazily to avoid circular
+
+    new_user = User(
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=get_password_hash(payload.password),
         is_admin=payload.is_admin,
     )
-    db.add(user)
+    db.add(new_user)
     db.commit()
-    db.refresh(user)
-    return user
+    db.refresh(new_user)
+    return new_user
 
 
 # -----------------------------------------------------
-# Admin: Tag Overview
+# Admin: Import voters CSV
 # -----------------------------------------------------
-@router.get("/tags/overview")
-def admin_tag_overview(
+@router.post("/import/voters")
+def import_voters(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    content = file.file.read().decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(content))
+
+    imported = 0
+    updated = 0
+
+    for row in reader:
+        voter_id = row.get("voter_id") or row.get("VoterID") or row.get("VOTER_ID")
+        if not voter_id:
+            # Skip any rows without a voter_id
+            continue
+
+        voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
+        if voter:
+            # Update some fields if they exist in the CSV
+            voter.first_name = row.get("first_name") or voter.first_name
+            voter.last_name = row.get("last_name") or voter.last_name
+            voter.address = row.get("address") or voter.address
+            voter.city = row.get("city") or voter.city
+            voter.state = row.get("state") or voter.state
+            voter.zip_code = row.get("zip_code") or voter.zip_code
+            voter.county = row.get("county") or voter.county
+            voter.precinct = row.get("precinct") or voter.precinct
+            voter.registered_party = row.get("registered_party") or voter.registered_party
+            voter.phone = row.get("phone") or voter.phone
+            voter.email = row.get("email") or voter.email
+            updated += 1
+        else:
+            voter = Voter(
+                voter_id=voter_id,
+                first_name=row.get("first_name") or "",
+                last_name=row.get("last_name") or "",
+                address=row.get("address"),
+                city=row.get("city"),
+                state=row.get("state"),
+                zip_code=row.get("zip_code"),
+                county=row.get("county"),
+                precinct=row.get("precinct"),
+                registered_party=row.get("registered_party"),
+                phone=row.get("phone"),
+                email=row.get("email"),
+            )
+            db.add(voter)
+            imported += 1
+
+    db.commit()
+
+    return {
+        "imported": imported,
+        "updated": updated,
+    }
+
+
+# -----------------------------------------------------
+# Admin: Import voted CSV
+# -----------------------------------------------------
+@router.post("/import/voted")
+def import_voted(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    content = file.file.read().decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(content))
+
+    updated = 0
+    not_found = 0
+
+    for row in reader:
+        voter_id = row.get("voter_id") or row.get("VoterID") or row.get("VOTER_ID")
+        if not voter_id:
+            continue
+
+        voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
+        if voter:
+            voter.has_voted = True
+            updated += 1
+        else:
+            not_found += 1
+
+    db.commit()
+
+    return {
+        "updated_voted": updated,
+        "not_found": not_found,
+    }
+
+
+# -----------------------------------------------------
+# Admin: Delete all voters
+# -----------------------------------------------------
+@router.delete("/voters")
+def delete_all_voters(
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    # Delete tags first
+    db.query(UserVoterTag).delete()
+    # Then voters
+    db.query(Voter).delete()
+    db.commit()
+    return {"status": "ok", "message": "All voters deleted."}
+
+
+# -----------------------------------------------------
+# Admin: Upload logo + update branding
+# -----------------------------------------------------
+@router.post("/branding/logo", response_model=BrandingOut)
+def upload_logo(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    # Ensure uploads directory
+    uploads_dir = ensure_uploads_dir()
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Only image files (.png, .jpg, .jpeg, .gif, .webp) are allowed",
+        )
+
+    # Generate a new unique filename
+    new_filename = f"logo_{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(uploads_dir, new_filename)
+
+    # Save file
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Update or create branding record
+    branding = db.query(Branding).first()
+    if not branding:
+        branding = Branding(app_name="BOOTS ON THE GROUND", logo_url=f"/{file_path}")
+        db.add(branding)
+    else:
+        branding.logo_url = f"/{file_path}"
+
+    db.commit()
+    db.refresh(branding)
+    return branding
+
+
+# -----------------------------------------------------
+# Admin: Tags overview
+# -----------------------------------------------------
+@router.get("/tags/overview", response_model=list[dict])
+def tag_overview(
     user_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
-    query = (
-        db.query(
-            UserVoterTag.user_id.label("user_id"),
-            User.full_name.label("user_full_name"),
-            User.email.label("user_email"),
-            Voter.id.label("voter_id"),
-            Voter.voter_id.label("voter_voter_id"),
-            Voter.first_name.label("voter_first_name"),
-            Voter.last_name.label("voter_last_name"),
-            Voter.has_voted.label("has_voted"),
-        )
-        .join(User, User.id == UserVoterTag.user_id)
-        .join(Voter, Voter.id == UserVoterTag.voter_id)
+    """
+    Returns a list of tagged voters for either:
+      - a specific user_id, or
+      - all users if user_id is not provided.
+
+    Each item includes:
+      - user info (id, email, full_name)
+      - voter info (id, voter_id, first/last name, county, precinct, has_voted)
+    """
+    query = db.query(UserVoterTag, User, Voter).join(User, UserVoterTag.user_id == User.id).join(
+        Voter, UserVoterTag.voter_id == Voter.id
     )
 
     if user_id is not None:
         query = query.filter(UserVoterTag.user_id == user_id)
 
-    results = query.order_by(User.full_name, Voter.last_name, Voter.first_name).all()
+    rows = query.all()
 
-    overview = []
-    for row in results:
-        overview.append(
+    results = []
+    for tag, user, voter in rows:
+        results.append(
             {
-                "user_id": row.user_id,
-                "user_full_name": row.user_full_name,
-                "user_email": row.user_email,
-                "voter_id": row.voter_id,
-                "voter_voter_id": row.voter_voter_id,
-                "first_name": row.voter_first_name,
-                "last_name": row.voter_last_name,
-                "has_voted": bool(row.has_voted),
+                "user_id": user.id,
+                "user_email": user.email,
+                "user_full_name": user.full_name,
+                "voter_internal_id": voter.id,
+                "voter_voter_id": voter.voter_id,
+                "first_name": voter.first_name,
+                "last_name": voter.last_name,
+                "has_voted": voter.has_voted,
+                "county": voter.county,
+                "precinct": voter.precinct,
             }
         )
 
-    return overview
+    return results
 
 
 # -----------------------------------------------------
-# Helper: normalize header names for CSV
+# Admin: List distinct counties from voter file
 # -----------------------------------------------------
-def _normalize_header(name: str) -> str:
-    return name.strip().lower().replace(" ", "").replace("_", "")
-
-
-def _detect_voter_id_header(fieldnames):
-    if not fieldnames:
-        return None
-
-    header_map = {}
-    for original in fieldnames:
-        norm = _normalize_header(original)
-        header_map[norm] = original
-
-    for candidate_norm in ("voterid", "voter_id", "voteridentifier"):
-        if candidate_norm in header_map:
-            return header_map[candidate_norm]
-
-    candidates = []
-    for original in fieldnames:
-        norm = _normalize_header(original)
-        if "voter" in norm and "id" in norm:
-            candidates.append(original)
-    if len(candidates) == 1:
-        return candidates[0]
-
-    return None
-
-
-# -----------------------------------------------------
-# Admin: Import voters (full list)
-# -----------------------------------------------------
-@router.post("/voters/import")
-async def import_voters(
-    file: UploadFile = File(...),
+@router.get("/counties", response_model=List[str])
+def list_counties(
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
-    content = await file.read()
-    text = content.decode("utf-8", errors="ignore")
-    reader = csv.DictReader(io.StringIO(text))
+    rows = (
+        db.query(Voter.county)
+        .filter(Voter.county.isnot(None))
+        .filter(func.trim(Voter.county) != "")
+        .distinct()
+        .order_by(Voter.county.asc())
+        .all()
+    )
+    return [r[0] for r in rows]
 
-    created = 0
-    updated = 0
 
-    voter_id_header = _detect_voter_id_header(reader.fieldnames)
+# -----------------------------------------------------
+# Admin: Get a specific user's allowed counties
+# -----------------------------------------------------
+@router.get("/users/{user_id}/county-access", response_model=List[str])
+def get_user_county_access(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    for row in reader:
-        voter_id_raw = None
-        if voter_id_header:
-            voter_id_raw = row.get(voter_id_header)
-        else:
-            voter_id_raw = (
-                row.get("voter_id")
-                or row.get("VOTER_ID")
-                or row.get("VoterID")
-                or row.get("VOTERID")
-            )
+    rows = (
+        db.query(UserCountyAccess)
+        .filter(UserCountyAccess.user_id == user_id)
+        .all()
+    )
+    return [r.county for r in rows]
 
-        if not voter_id_raw:
+
+# -----------------------------------------------------
+# Admin: Set a specific user's allowed counties
+# -----------------------------------------------------
+@router.put("/users/{user_id}/county-access", response_model=List[str])
+def update_user_county_access(
+    user_id: int,
+    payload: CountyAccessUpdate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Normalize + de-duplicate
+    allowed: List[str] = []
+    for c in payload.allowed_counties:
+        if c is None:
             continue
-        voter_id = str(voter_id_raw).strip()
-        if not voter_id:
+        c_norm = c.strip()
+        if not c_norm:
             continue
+        if c_norm not in allowed:
+            allowed.append(c_norm)
 
-        voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
-        if voter is None:
-            voter = Voter(voter_id=voter_id)
-            db.add(voter)
-            created += 1
-        else:
-            updated += 1
+    # Wipe old rows
+    db.query(UserCountyAccess).filter(UserCountyAccess.user_id == user_id).delete()
 
-        def get_field(*names):
-            for name in names:
-                if name in row and row[name]:
-                    return row[name]
-            for key, value in row.items():
-                if key.lower() in [n.lower() for n in names] and value:
-                    return value
-            return None
-
-        fn = get_field("first_name", "FIRST_NAME", "FirstName")
-        ln = get_field("last_name", "LAST_NAME", "LastName")
-        addr = get_field("address", "ADDRESS")
-        city = get_field("city", "CITY")
-        state = get_field("state", "STATE")
-        zip_code = get_field("zip_code", "ZIP_CODE", "zip", "ZIP")
-        county = get_field("county", "COUNTY")
-        party = get_field("registered_party", "REGISTERED_PARTY", "party", "PARTY")
-        phone = get_field("phone", "PHONE")
-        email = get_field("email", "EMAIL")
-        precinct = get_field("precinct", "PRECINCT")
-
-        if fn is not None:
-            voter.first_name = fn
-        if ln is not None:
-            voter.last_name = ln
-        if addr is not None:
-            voter.address = addr
-        if city is not None:
-            voter.city = city
-        if state is not None:
-            voter.state = state
-        if zip_code is not None:
-            voter.zip_code = zip_code
-        if county is not None:
-            voter.county = county
-        if party is not None:
-            voter.registered_party = party
-        if phone is not None:
-            voter.phone = phone
-        if email is not None:
-            voter.email = email
-        if precinct is not None:
-            voter.precinct = precinct
+    # Insert new ones
+    for c in allowed:
+        db.add(UserCountyAccess(user_id=user_id, county=c))
 
     db.commit()
-    return {"status": "ok", "created": created, "updated": updated}
-
-
-# -----------------------------------------------------
-# Admin: Import voters who have voted
-# -----------------------------------------------------
-@router.post("/voters/import-voted")
-async def import_voted(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
-):
-    content = await file.read()
-    text = content.decode("utf-8", errors="ignore")
-    reader = csv.DictReader(io.StringIO(text))
-
-    updated = 0
-    not_found = 0
-
-    voter_id_header = _detect_voter_id_header(reader.fieldnames)
-
-    for row in reader:
-        voter_id_raw = None
-        if voter_id_header:
-            voter_id_raw = row.get(voter_id_header)
-        else:
-            voter_id_raw = (
-                row.get("voter_id")
-                or row.get("VOTER_ID")
-                or row.get("VoterID")
-                or row.get("VOTERID")
-            )
-
-        if not voter_id_raw:
-            continue
-
-        voter_id = str(voter_id_raw).strip()
-        if not voter_id:
-            continue
-
-        voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
-        if voter is None:
-            not_found += 1
-            continue
-
-        if not voter.has_voted:
-            voter.has_voted = True
-            updated += 1
-
-    db.commit()
-    return {"status": "ok", "updated": updated, "not_found": not_found}
-
-
-# -----------------------------------------------------
-# Admin: Upload Branding Logo
-# -----------------------------------------------------
-@router.post("/branding/logo", response_model=BrandingOut)
-async def upload_logo(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
-):
-    os.makedirs(STATIC_DIR, exist_ok=True)
-
-    with open(LOGO_PATH, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    branding = db.query(Branding).first()
-    if not branding:
-        branding = Branding(
-            app_name="BOOTS ON THE GROUND",
-            logo_url="/static/logo.png",
-        )
-        db.add(branding)
-    else:
-        branding.logo_url = "/static/logo.png"
-
-    db.commit()
-    db.refresh(branding)
-    return branding
+    return allowed
 
 
 # -----------------------------------------------------

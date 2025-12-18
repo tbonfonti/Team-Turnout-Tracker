@@ -17,75 +17,79 @@ function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+// ==== FETCH HELPERS ====
+
+async function fetchJson(url, options = {}) {
+  const resp = await fetch(url, options);
+  if (!resp.ok) {
+    let msg = `Request failed with status ${resp.status}`;
+    try {
+      const data = await resp.json();
+      if (data && data.detail) {
+        msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      }
+    } catch (e) {
+      // ignore JSON parsing error, keep default message
+    }
+    throw new Error(msg);
+  }
+  // Try to parse JSON; if empty, just return null
+  const text = await resp.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
+
 function authHeaders() {
   const token = getToken();
-  if (!token) return {};
-  return {
-    Authorization: `Bearer ${token}`,
-  };
+  return token
+    ? {
+        Authorization: `Bearer ${token}`,
+      }
+    : {};
 }
 
 function jsonHeaders() {
   return {
-    "Content-Type": "application/json",
     ...authHeaders(),
+    "Content-Type": "application/json",
   };
-}
-
-async function fetchJson(url, options = {}) {
-  const res = await fetch(url, options);
-
-  if (!res.ok) {
-    let message = `Request failed with status ${res.status}`;
-    try {
-      const data = await res.json();
-      if (data && data.detail) {
-        if (Array.isArray(data.detail)) {
-          message = data.detail.map((d) => d.msg || d).join(", ");
-        } else {
-          message = data.detail;
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
-    throw new Error(message);
-  }
-
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 // ==== AUTH ====
 
 export async function apiLogin(email, password) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+  const body = new URLSearchParams();
+  body.set("username", email);
+  body.set("password", password);
+
+  const resp = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ email, password }),
+    body,
   });
 
-  if (!res.ok) {
-    let message = `Login failed (${res.status})`;
+  if (!resp.ok) {
+    let msg = `Login failed with status ${resp.status}`;
     try {
-      const data = await res.json();
+      const data = await resp.json();
       if (data && data.detail) {
-        message = data.detail;
+        msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
       }
-    } catch {
-      // ignore parse errors
-    }
-    throw new Error(message);
+    } catch (e) {}
+    throw new Error(msg);
   }
 
-  const data = await res.json();
-  if (data && data.access_token) {
-    setToken(data.access_token);
-  }
+  const data = await resp.json();
+  const token = data.access_token;
+  setToken(token);
   return data;
+}
+
+export async function apiLogout() {
+  setToken(null);
 }
 
 export async function apiGetMe() {
@@ -94,20 +98,30 @@ export async function apiGetMe() {
   });
 }
 
-// ==== VOTER SEARCH ====
+// ==== VOTERS ====
 
-export async function apiSearchVoters(q, page = 1, pageSize = 25) {
+export async function apiSearchVoters(params) {
   const url = new URL(`${API_BASE}/voters/`);
-  if (q) url.searchParams.set("q", q);
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("page_size", String(pageSize));
+
+  if (params?.q) {
+    url.searchParams.set("q", params.q);
+  }
+  if (params?.field) {
+    url.searchParams.set("field", params.field);
+  }
+  if (params?.page) {
+    url.searchParams.set("page", String(params.page));
+  }
+  if (params?.pageSize) {
+    url.searchParams.set("page_size", String(params.pageSize));
+  }
 
   return fetchJson(url.toString(), {
     headers: authHeaders(),
   });
 }
 
-// ==== TAGGING & DASHBOARD ====
+// ==== TAGS (current user) ====
 
 export async function apiTagVoter(voterId) {
   return fetchJson(`${API_BASE}/tags/${voterId}`, {
@@ -129,96 +143,79 @@ export async function apiGetDashboard() {
   });
 }
 
-export async function apiExportCallList() {
-  const res = await fetch(`${API_BASE}/tags/dashboard/export-call-list`, {
+export async function apiExportTags() {
+  const resp = await fetch(`${API_BASE}/tags/export`, {
     headers: authHeaders(),
   });
 
-  if (!res.ok) {
-    throw new Error("Failed to export call list");
+  if (!resp.ok) {
+    let msg = `Export failed with status ${resp.status}`;
+    try {
+      const data = await resp.json();
+      if (data && data.detail) {
+        msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      }
+    } catch (e) {}
+    throw new Error(msg);
   }
 
-  return res.blob();
+  const blob = await resp.blob();
+  return blob;
 }
 
-// Update phone/email/note for a tagged voter
-export async function apiUpdateTaggedVoterContact(
-  voterId,
-  { phone, email, note }
-) {
+export async function apiUpdateTaggedVoterContact(voterId, payload) {
   return fetchJson(`${API_BASE}/tags/${voterId}/contact`, {
     method: "PATCH",
     headers: jsonHeaders(),
-    body: JSON.stringify({ phone, email, note }),
+    body: JSON.stringify(payload),
   });
 }
 
-// ==== ADMIN – VOTER IMPORT / BULK ACTIONS ====
+// ==== ADMIN: IMPORT / DELETE ====
 
 export async function apiImportVoters(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/admin/voters/import`, {
+  return fetchJson(`${API_BASE}/admin/import/voters`, {
     method: "POST",
-    headers: authHeaders(), // don't set Content-Type for FormData
+    headers: authHeaders(),
     body: formData,
   });
-
-  if (!res.ok) {
-    throw new Error("Failed to import voters");
-  }
-
-  return res.json();
 }
 
 export async function apiImportVoted(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/admin/voters/import-voted`, {
+  return fetchJson(`${API_BASE}/admin/import/voted`, {
     method: "POST",
-    headers: authHeaders(), // don't set Content-Type for FormData
+    headers: authHeaders(),
     body: formData,
   });
-
-  if (!res.ok) {
-    throw new Error("Failed to import voted list");
-  }
-
-  return res.json();
 }
 
 export async function apiDeleteAllVoters() {
-  const res = await fetch(`${API_BASE}/admin/voters/delete-all`, {
+  return fetchJson(`${API_BASE}/admin/voters`, {
     method: "DELETE",
     headers: authHeaders(),
   });
-
-  if (!res.ok) {
-    throw new Error("Failed to delete voters");
-  }
-
-  return res.json();
 }
 
-// ==== ADMIN – USER MANAGEMENT (direct create user) ====
+// ==== ADMIN: USER MANAGEMENT ====
 
-export async function apiInviteUser(
-  email,
-  fullName,
-  password,
-  isAdmin = false
-) {
-  return fetchJson(`${API_BASE}/admin/users/create`, {
+export async function apiInviteUser(email, fullName, password, isAdmin) {
+  const body = {
+    email,
+    full_name: fullName,
+    password,
+    is_admin: isAdmin,
+  };
+
+  return fetchJson(`${API_BASE}/admin/users`, {
     method: "POST",
     headers: jsonHeaders(),
-    body: JSON.stringify({
-      email,
-      full_name: fullName,
-      password,
-      is_admin: isAdmin,
-    }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -228,32 +225,26 @@ export async function apiListUsers() {
   });
 }
 
-// ==== BRANDING ====
-
-export async function apiGetBranding() {
-  return fetchJson(`${API_BASE}/branding/`, {
-    headers: authHeaders(),
-  });
-}
+// ==== ADMIN: BRANDING ====
 
 export async function apiUploadLogo(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/admin/branding/logo`, {
+  return fetchJson(`${API_BASE}/admin/branding/logo`, {
     method: "POST",
-    headers: authHeaders(), // don't set Content-Type for FormData
+    headers: authHeaders(),
     body: formData,
   });
-
-  if (!res.ok) {
-    throw new Error("Failed to upload logo");
-  }
-
-  return res.json();
 }
 
-// ==== ADMIN TAG OVERVIEW (per-user) ====
+export async function apiGetBranding() {
+  return fetchJson(`${API_BASE}/admin/branding`, {
+    headers: authHeaders(),
+  });
+}
+
+// ==== ADMIN: TAG OVERVIEW ====
 
 export async function apiGetTagOverview(userId) {
   const url = new URL(`${API_BASE}/admin/tags/overview`);
@@ -268,4 +259,28 @@ export async function apiGetTagOverview(userId) {
 
 export async function apiGetDashboardForUser(userId) {
   return apiGetTagOverview(userId);
+}
+
+// ==== ADMIN – COUNTY ACCESS CONTROL ====
+
+export async function apiListCounties() {
+  return fetchJson(`${API_BASE}/admin/counties`, {
+    headers: authHeaders(),
+  });
+}
+
+export async function apiGetUserCountyAccess(userId) {
+  return fetchJson(`${API_BASE}/admin/users/${userId}/county-access`, {
+    headers: authHeaders(),
+  });
+}
+
+export async function apiUpdateUserCountyAccess(userId, allowedCounties) {
+  return fetchJson(`${API_BASE}/admin/users/${userId}/county-access`, {
+    method: "PUT",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      allowed_counties: allowedCounties,
+    }),
+  });
 }

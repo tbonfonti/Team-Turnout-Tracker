@@ -8,7 +8,7 @@ from sqlalchemy import or_, and_
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Voter
+from app.models import Voter, UserCountyAccess
 from app.schemas import VoterSearchResponse
 
 router = APIRouter(prefix="/voters", tags=["Voters"])
@@ -60,13 +60,28 @@ def search_voters(
 
     base_query = db.query(Voter)
 
+    # Restrict non-admin users to only the counties they are allowed to see
+    if not user.is_admin:
+        allowed_rows = (
+            db.query(UserCountyAccess.county)
+            .filter(UserCountyAccess.user_id == user.id)
+            .all()
+        )
+        allowed_counties = [r[0] for r in allowed_rows if r[0] is not None]
+
+        if allowed_counties:
+            base_query = base_query.filter(Voter.county.in_(allowed_counties))
+        else:
+            # User has no assigned counties => no voters visible
+            base_query = base_query.filter(False)
+
     if q:
         q = q.strip()
         if q:
-            # Split query into individual terms for multi-word searching
             terms = [t for t in q.split() if t]
+
+            # If no terms (e.g. user typed just spaces), fall back to simple listing
             if not terms:
-                # nothing usable after stripping
                 total = base_query.count()
                 voters = (
                     base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
@@ -100,17 +115,13 @@ def search_voters(
             normalized_field = (field or "all").strip().lower()
 
             if normalized_field != "all" and normalized_field in field_map:
-                # Targeted search on a single column (best for performance).
-                # For multi-word queries, require all terms to match that column.
+                # Single-column search
                 col = field_map[normalized_field]
-                if len(terms) == 1:
-                    like_pattern = f"%{terms[0]}%"
-                    base_query = base_query.filter(col.ilike(like_pattern))
-                else:
-                    conditions = [
-                        col.ilike(f"%{term}%") for term in terms
-                    ]
-                    base_query = base_query.filter(and_(*conditions))
+                # All terms must appear in that column (AND of ILIKE)
+                conditions = [
+                    col.ilike(f"%{term}%") for term in terms
+                ]
+                base_query = base_query.filter(and_(*conditions))
             else:
                 # Broad multi-field search:
                 # For each term, build an OR across all searchable columns,

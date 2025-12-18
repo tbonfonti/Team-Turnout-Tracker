@@ -21,17 +21,24 @@ class UserCreate(UserBase):
     is_admin: bool = False
 
 
-class UserOut(UserBase):
+class UserOut(BaseModel):
     id: int
+    email: EmailStr
+    full_name: Optional[str]
     is_admin: bool
 
     class Config:
         orm_mode = True
 
 
-class LoginRequest(BaseModel):
+class UserMe(BaseModel):
+    id: int
     email: EmailStr
-    password: str
+    full_name: Optional[str]
+    is_admin: bool
+
+    class Config:
+        orm_mode = True
 
 
 class InviteUserRequest(BaseModel):
@@ -47,19 +54,36 @@ class VoterBase(BaseModel):
     last_name: str
     address: Optional[str] = None
 
+
+class VoterCreate(VoterBase):
     city: Optional[str] = None
     state: Optional[str] = None
     zip_code: Optional[str] = None
-    registered_party: Optional[str] = None
-
-    phone: Optional[str] = None
-    email: Optional[str] = None
     county: Optional[str] = None
     precinct: Optional[str] = None
+    registered_party: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    has_voted: bool = False
+    note: Optional[str] = None
 
-class VoterOut(VoterBase):
+
+class VoterOut(BaseModel):
     id: int
+    voter_id: str
+    first_name: str
+    last_name: str
+    address: Optional[str]
+    city: Optional[str]
+    state: Optional[str]
+    zip_code: Optional[str]
+    county: Optional[str]
+    precinct: Optional[str]
+    registered_party: Optional[str]
+    phone: Optional[str]
+    email: Optional[str]
     has_voted: bool
+    note: Optional[str]
 
     class Config:
         orm_mode = True
@@ -91,3 +115,7 @@ class TagOverviewItem(BaseModel):
     has_voted: bool
     county: Optional[str] = None
     precinct: Optional[str] = None
+
+
+class CountyAccessUpdate(BaseModel):
+    allowed_counties: List[str] = []

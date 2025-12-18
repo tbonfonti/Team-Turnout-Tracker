@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Voter, UserVoterTag
+from ..models import Voter, UserVoterTag, UserCountyAccess
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -35,6 +35,27 @@ def tag_voter(
     voter = db.query(Voter).filter(Voter.id == voter_id).first()
     if not voter:
         raise HTTPException(status_code=404, detail="Voter not found")
+
+    # Non-admin users cannot tag voters outside their allowed counties
+    if not user.is_admin:
+        allowed_rows = (
+            db.query(UserCountyAccess.county)
+            .filter(UserCountyAccess.user_id == user.id)
+            .all()
+        )
+        allowed_counties = [r[0] for r in allowed_rows if r[0] is not None]
+
+        if allowed_counties:
+            if voter.county not in allowed_counties:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You are not allowed to tag voters in this county.",
+                )
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="You have not been granted access to any counties.",
+            )
 
     # Check if already tagged by this user
     existing = (
@@ -92,7 +113,29 @@ def get_dashboard(
     if not voter_ids:
         return []
 
-    voters = db.query(Voter).filter(Voter.id.in_(voter_ids)).all()
+    if user.is_admin:
+        # Admins see all tagged voters
+        voters = db.query(Voter).filter(Voter.id.in_(voter_ids)).all()
+    else:
+        # Restrict tagged voters to allowed counties
+        allowed_rows = (
+            db.query(UserCountyAccess.county)
+            .filter(UserCountyAccess.user_id == user.id)
+            .all()
+        )
+        allowed_counties = [r[0] for r in allowed_rows if r[0] is not None]
+
+        if not allowed_counties:
+            return []
+
+        voters = (
+            db.query(Voter)
+            .filter(
+                Voter.id.in_(voter_ids),
+                Voter.county.in_(allowed_counties),
+            )
+            .all()
+        )
 
     # Return explicit dicts so we can include note without touching schemas.py
     out = []
@@ -107,6 +150,7 @@ def get_dashboard(
                 "city": v.city,
                 "state": v.state,
                 "zip_code": v.zip_code,
+                "county": v.county,
                 "precinct": v.precinct,
                 "registered_party": v.registered_party,
                 "phone": v.phone,
@@ -119,80 +163,22 @@ def get_dashboard(
 
 
 # --------------------------------------------------------------------
-# Update contact info (phone/email/note) for a tagged voter
-# PATCH /tags/{voter_id}/contact
-# Only allowed if this user has that voter tagged
+# Export tagged voters as CSV
+# GET /tags/export
 # --------------------------------------------------------------------
-@router.patch("/{voter_id}/contact")
-def update_tagged_voter_contact(
-    voter_id: int,
-    payload: VoterContactUpdate,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    # Ensure the current user has this voter tagged
-    tag = (
-        db.query(UserVoterTag)
-        .filter(UserVoterTag.user_id == user.id, UserVoterTag.voter_id == voter_id)
-        .first()
-    )
-    if not tag:
-        raise HTTPException(
-            status_code=404,
-            detail="You do not have this voter tagged.",
-        )
-
-    voter = db.query(Voter).filter(Voter.id == voter_id).first()
-    if not voter:
-        raise HTTPException(status_code=404, detail="Voter not found")
-
-    if payload.phone is not None:
-        voter.phone = payload.phone
-    if payload.email is not None:
-        voter.email = payload.email
-    if payload.note is not None:
-        voter.note = payload.note
-
-    db.commit()
-    db.refresh(voter)
-
-    return {
-        "id": voter.id,
-        "voter_id": voter.voter_id,
-        "first_name": voter.first_name,
-        "last_name": voter.last_name,
-        "address": voter.address,
-        "city": voter.city,
-        "state": voter.state,
-        "zip_code": voter.zip_code,
-        "precinct": voter.precinct,
-        "registered_party": voter.registered_party,
-        "phone": voter.phone,
-        "email": voter.email,
-        "has_voted": voter.has_voted,
-        "note": voter.note,
-    }
-
-
-# --------------------------------------------------------------------
-# Export call list (for tagged voters who have NOT voted)
-# GET /tags/dashboard/export-call-list
-# --------------------------------------------------------------------
-@router.get("/dashboard/export-call-list")
-def export_call_list(
+@router.get("/export")
+def export_tags(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     tags = (
         db.query(UserVoterTag)
-        .join(Voter, UserVoterTag.voter_id == Voter.id)
-        .filter(UserVoterTag.user_id == user.id, Voter.has_voted == False)
+        .filter(UserVoterTag.user_id == user.id)
         .all()
     )
-
     voter_ids = [t.voter_id for t in tags]
     if not voter_ids:
-        # Empty CSV
+        # Return an empty CSV
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(
@@ -262,3 +248,38 @@ def export_call_list(
         headers={"Content-Disposition": 'attachment; filename="call_list.csv"'},
     )
     return resp
+
+
+# --------------------------------------------------------------------
+# Update contact info & note for a tagged voter
+# Only allowed if this user has that voter tagged
+# --------------------------------------------------------------------
+@router.patch("/{voter_id}/contact")
+def update_tagged_voter_contact(
+    voter_id: int,
+    payload: VoterContactUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    # Ensure the current user has this voter tagged
+    tag = (
+        db.query(UserVoterTag)
+        .filter(UserVoterTag.user_id == user.id, UserVoterTag.voter_id == voter_id)
+        .first()
+    )
+    if not tag:
+        raise HTTPException(status_code=403, detail="You do not have this voter tagged")
+
+    voter = db.query(Voter).filter(Voter.id == voter_id).first()
+    if not voter:
+        raise HTTPException(status_code=404, detail="Voter not found")
+
+    if payload.phone is not None:
+        voter.phone = payload.phone
+    if payload.email is not None:
+        voter.email = payload.email
+    if payload.note is not None:
+        voter.note = payload.note
+
+    db.commit()
+    return {"status": "updated"}
