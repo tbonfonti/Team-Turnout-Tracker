@@ -304,7 +304,7 @@ async def upload_logo(
     branding = db.query(Branding).first()
     if not branding:
         branding = Branding(
-            app_name="Team Turnout Tracking",
+            app_name="BOOTS ON THE GROUND",
             logo_url="/static/logo.png",
         )
         db.add(branding)
@@ -326,6 +326,6 @@ def get_branding(
 ):
     branding = db.query(Branding).first()
     if not branding:
-        return BrandingOut(logo_url=None, app_name="Team Turnout Tracker")
+        return BrandingOut(logo_url=None, app_name="BOOTS ON THE GROUND")
 
     return branding
