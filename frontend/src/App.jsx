@@ -104,7 +104,7 @@ export default function App() {
             />
           )}
           <h1 className="app-title">
-            {branding?.app_name || "Team Turnout Tracking"}
+            {branding?.app_name || "BOOTS ON THE GROUND"}
           </h1>
         </div>
         {user && hasAcceptedTos && (
