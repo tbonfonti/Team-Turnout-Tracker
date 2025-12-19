@@ -1,3 +1,5 @@
+# backend/app/schemas.py
+
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 
@@ -11,7 +13,6 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 
-# ✅ FIX: this is required by backend/app/deps.py (and/or auth_routes)
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -52,6 +53,7 @@ class InviteUserRequest(BaseModel):
     full_name: Optional[str] = None
     password: str
     is_admin: bool = False
+    allowed_counties: List[str] = []
 
 
 class VoterBase(BaseModel):
@@ -97,7 +99,8 @@ class VoterOut(BaseModel):
 
 class VoterSearchResponse(BaseModel):
     voters: List[VoterOut]
-    total: int
+    total: Optional[int] = None
+    has_more: bool
     page: int
     page_size: int
 
