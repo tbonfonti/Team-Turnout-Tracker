@@ -30,7 +30,7 @@ def search_voters(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    # Normalize page_size to one of the allowed buckets for consistency
+    # Normalize page_size
     if page_size not in (10, 25, 50):
         if page_size < 10:
             page_size = 10
@@ -41,9 +41,9 @@ def search_voters(
 
     base_query = db.query(Voter)
 
-    # ---------------------------
+    # -------------------------------------------------
     # County permissions
-    # ---------------------------
+    # -------------------------------------------------
     if not getattr(user, "is_admin", False):
         allowed_counties = [
             r[0]
@@ -52,7 +52,6 @@ def search_voters(
             .all()
         ]
 
-        # If user has no counties assigned, they can see no voters
         if not allowed_counties:
             return {
                 "voters": [],
@@ -64,19 +63,13 @@ def search_voters(
 
         base_query = base_query.filter(Voter.county.in_(allowed_counties))
 
-    # ---------------------------
+    # -------------------------------------------------
     # Search logic
-    # ---------------------------
+    # -------------------------------------------------
     normalized_field = (field or "all").strip().lower()
-
-    if q:
-        q = q.strip()
-    else:
-        q = ""
-
+    q = (q or "").strip()
     terms = [t for t in q.split() if t]
 
-    # Map of allowed field names to columns
     field_map = {
         "first_name": Voter.first_name,
         "last_name": Voter.last_name,
@@ -93,80 +86,89 @@ def search_voters(
     }
 
     if terms:
+        # ---------------------------------------------
         # Specific column search
+        # ---------------------------------------------
         if normalized_field != "all" and normalized_field in field_map:
             col = field_map[normalized_field]
-            conditions = [col.ilike(f"%{term}%") for term in terms]
-            base_query = base_query.filter(and_(*conditions))
-            base_query = base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
+            base_query = base_query.filter(
+                and_(*[col.ilike(f"%{t}%") for t in terms])
+            )
+            base_query = base_query.order_by(
+                Voter.last_name.asc(),
+                Voter.first_name.asc(),
+            )
 
+        # ---------------------------------------------
+        # ALL FIELDS SEARCH (smart)
+        # ---------------------------------------------
         else:
-            # ---------------------------
-            # NEW: smarter "all" search
-            # ---------------------------
-
-            # 1) If query looks like a name (exactly 2 terms), search first/last only.
-            # Use PREFIX matching first to reduce noise and improve speed.
+            # -----------------------------
+            # EXACTLY TWO TERMS
+            # -----------------------------
             if len(terms) == 2:
-                t1, t2 = terms[0], terms[1]
+                t1, t2 = terms
+                full = f"{t1} {t2}"
 
                 base_query = base_query.filter(
                     or_(
+                        # first last
                         and_(
                             func.lower(Voter.first_name).like(func.lower(f"{t1}%")),
                             func.lower(Voter.last_name).like(func.lower(f"{t2}%")),
                         ),
+                        # last first
                         and_(
                             func.lower(Voter.first_name).like(func.lower(f"{t2}%")),
                             func.lower(Voter.last_name).like(func.lower(f"{t1}%")),
                         ),
+                        # two-word last name (prefix)
+                        func.lower(Voter.last_name).like(func.lower(f"{full}%")),
+                        # two-word last name (ordered contains)
+                        func.lower(Voter.last_name).like(func.lower(f"%{t1}% {t2}%")),
                     )
                 )
-                base_query = base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
 
+                base_query = base_query.order_by(
+                    Voter.last_name.asc(),
+                    Voter.first_name.asc(),
+                )
+
+            # -----------------------------
+            # EVERYTHING ELSE → FTS
+            # -----------------------------
             else:
-                # 2) Otherwise: Postgres FTS on search_tsv (ranked)
-                # NOTE: requires `search_tsv` column in DB + GIN index
-                qtext = " ".join(terms)
-                tsq = func.plainto_tsquery("simple", func.lower(qtext))
-
+                tsq = func.plainto_tsquery("simple", func.lower(" ".join(terms)))
                 base_query = base_query.filter(Voter.search_tsv.op("@@")(tsq))
-                base_query = base_query.order_by(func.ts_rank(Voter.search_tsv, tsq).desc())
+                base_query = base_query.order_by(
+                    func.ts_rank(Voter.search_tsv, tsq).desc()
+                )
 
+    # -------------------------------------------------
+    # No search → browsing
+    # -------------------------------------------------
     else:
-        # No query: browsing list (fast sort)
-        base_query = base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
+        base_query = base_query.order_by(
+            Voter.last_name.asc(),
+            Voter.first_name.asc(),
+        )
 
-    # ---------------------------
-    # Pagination WITHOUT COUNT(*)
-    # ---------------------------
+    # -------------------------------------------------
+    # Pagination (NO COUNT(*) on search)
+    # -------------------------------------------------
     offset = (page - 1) * page_size
-
-    # Fetch one extra row so we can compute has_more
     rows = base_query.offset(offset).limit(page_size + 1).all()
+
     has_more = len(rows) > page_size
     voters = rows[:page_size]
 
-    # Only compute total when browsing (q empty)
+    # Only count totals when browsing
     total = None
     if not terms:
-        total = db.query(func.count(Voter.id)).select_from(Voter).scalar()
-        # If non-admin, total should reflect county restriction
+        count_query = db.query(func.count(Voter.id))
         if not getattr(user, "is_admin", False):
-            allowed_counties = [
-                r[0]
-                for r in db.query(UserCountyAccess.county)
-                .filter(UserCountyAccess.user_id == user.id)
-                .all()
-            ]
-            if allowed_counties:
-                total = (
-                    db.query(func.count(Voter.id))
-                    .filter(Voter.county.in_(allowed_counties))
-                    .scalar()
-                )
-            else:
-                total = 0
+            count_query = count_query.filter(Voter.county.in_(allowed_counties))
+        total = count_query.scalar()
 
     return {
         "voters": voters,
