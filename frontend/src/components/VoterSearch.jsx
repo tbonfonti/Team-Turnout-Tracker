@@ -1,8 +1,13 @@
-// frontend/src/components/VoterSearch.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiSearchVoters, apiTagVoter, apiUntagVoter } from "../api";
 
-export default function VoterSearch({ taggedIds, setTaggedIds }) {
+export default function VoterSearch(props) {
+  // ✅ Safe defaults: if parent doesn't pass these, we still work.
+  const [localTaggedIds, setLocalTaggedIds] = useState([]);
+
+  const taggedIds = Array.isArray(props?.taggedIds) ? props.taggedIds : localTaggedIds;
+  const setTaggedIds = typeof props?.setTaggedIds === "function" ? props.setTaggedIds : setLocalTaggedIds;
+
   const [query, setQuery] = useState("");
   const [field, setField] = useState("all");
   const [voters, setVoters] = useState([]);
@@ -11,23 +16,22 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // total may be null now for search queries
-  const [total, setTotal] = useState(null);
+  const [total, setTotal] = useState(null); // may be null for searches now
   const [hasMore, setHasMore] = useState(false);
 
   async function loadVoters(newPage = page, newPageSize = pageSize) {
     try {
       setError("");
       const res = await apiSearchVoters(query, newPage, newPageSize, field);
-      setVoters(res.voters || []);
-      setPage(res.page || newPage);
-      setPageSize(res.page_size || newPageSize);
 
-      // NEW
-      setHasMore(Boolean(res.has_more));
-      setTotal(typeof res.total === "number" ? res.total : null);
+      setVoters(res?.voters || []);
+      setPage(res?.page || newPage);
+      setPageSize(res?.page_size || newPageSize);
+
+      setHasMore(Boolean(res?.has_more));
+      setTotal(typeof res?.total === "number" ? res.total : null);
     } catch (e) {
-      setError(e.message || "Failed to load voters");
+      setError(e?.message || "Failed to load voters");
     }
   }
 
@@ -53,7 +57,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
         setTaggedIds([...taggedIds, voterInternalId]);
       }
     } catch (e) {
-      setError(e.message || "Failed to update tag");
+      setError(e?.message || "Failed to update tag");
     }
   }
 
@@ -62,6 +66,10 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
 
   const canPrev = page > 1;
   const canNext = hasMore || (typeof total === "number" && end < total);
+
+  const totalText = useMemo(() => {
+    return typeof total === "number" ? String(total) : "?";
+  }, [total]);
 
   return (
     <div>
@@ -100,7 +108,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
         <div>
-          Showing {start}-{end} of {typeof total === "number" ? total : "?"}
+          Showing {start}-{end} of {totalText}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -168,9 +176,7 @@ export default function VoterSearch({ taggedIds, setTaggedIds }) {
             {voters.map((v) => (
               <tr key={v.id}>
                 <td style={{ textAlign: "center" }}>
-                  <button onClick={() => toggleTag(v.id)}>
-                    {taggedIds.includes(v.id) ? "Untag" : "Tag"}
-                  </button>
+                  <button onClick={() => toggleTag(v.id)}>{taggedIds.includes(v.id) ? "Untag" : "Tag"}</button>
                 </td>
                 <td>{v.voter_id}</td>
                 <td>{v.first_name}</td>
