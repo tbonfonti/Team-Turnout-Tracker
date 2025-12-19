@@ -1,6 +1,7 @@
 # backend/app/routers/voter_routes.py
 
 from typing import Optional
+import re
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -12,6 +13,30 @@ from app.models import Voter, UserCountyAccess
 from app.schemas import VoterSearchResponse
 
 router = APIRouter(prefix="/voters", tags=["Voters"])
+
+
+def _sanitize_term(term: str) -> str:
+    """
+    Keep only alphanumeric characters. This avoids tsquery syntax issues
+    and prevents user input from breaking the query.
+    """
+    return re.sub(r"[^a-z0-9]+", "", term.lower())
+
+
+def _build_prefix_tsquery(terms: list[str]) -> str:
+    """
+    Build a to_tsquery string that uses prefix matching for each term, e.g.
+    ["don", "purdy", "atlantic"] -> "don:* & purdy:* & atlantic:*"
+
+    We only apply :* for terms length >= 3 to avoid extremely broad matches on short tokens.
+    Short tokens (1-2 chars) are ignored in the tsquery.
+    """
+    cleaned = []
+    for t in terms:
+        s = _sanitize_term(t)
+        if len(s) >= 3:
+            cleaned.append(f"{s}:*")
+    return " & ".join(cleaned)
 
 
 @router.get("/", response_model=VoterSearchResponse)
@@ -44,6 +69,7 @@ def search_voters(
     # -------------------------------------------------
     # County permissions
     # -------------------------------------------------
+    allowed_counties = None
     if not getattr(user, "is_admin", False):
         allowed_counties = [
             r[0]
@@ -91,13 +117,8 @@ def search_voters(
         # ---------------------------------------------
         if normalized_field != "all" and normalized_field in field_map:
             col = field_map[normalized_field]
-            base_query = base_query.filter(
-                and_(*[col.ilike(f"%{t}%") for t in terms])
-            )
-            base_query = base_query.order_by(
-                Voter.last_name.asc(),
-                Voter.first_name.asc(),
-            )
+            base_query = base_query.filter(and_(*[col.ilike(f"%{t}%") for t in terms]))
+            base_query = base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
 
         # ---------------------------------------------
         # ALL FIELDS SEARCH (smart)
@@ -129,29 +150,29 @@ def search_voters(
                     )
                 )
 
-                base_query = base_query.order_by(
-                    Voter.last_name.asc(),
-                    Voter.first_name.asc(),
-                )
+                base_query = base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
 
             # -----------------------------
-            # EVERYTHING ELSE → FTS
+            # EVERYTHING ELSE → FTS (PREFIX)
             # -----------------------------
             else:
-                tsq = func.plainto_tsquery("simple", func.lower(" ".join(terms)))
+                # Build prefix tsquery so "don" matches "donald", etc.
+                tsquery_str = _build_prefix_tsquery(terms)
+
+                # If everything was too short and got filtered out, fallback to plainto_tsquery
+                if not tsquery_str:
+                    tsq = func.plainto_tsquery("simple", func.lower(" ".join(terms)))
+                else:
+                    tsq = func.to_tsquery("simple", tsquery_str)
+
                 base_query = base_query.filter(Voter.search_tsv.op("@@")(tsq))
-                base_query = base_query.order_by(
-                    func.ts_rank(Voter.search_tsv, tsq).desc()
-                )
+                base_query = base_query.order_by(func.ts_rank(Voter.search_tsv, tsq).desc())
 
     # -------------------------------------------------
     # No search → browsing
     # -------------------------------------------------
     else:
-        base_query = base_query.order_by(
-            Voter.last_name.asc(),
-            Voter.first_name.asc(),
-        )
+        base_query = base_query.order_by(Voter.last_name.asc(), Voter.first_name.asc())
 
     # -------------------------------------------------
     # Pagination (NO COUNT(*) on search)
@@ -166,7 +187,7 @@ def search_voters(
     total = None
     if not terms:
         count_query = db.query(func.count(Voter.id))
-        if not getattr(user, "is_admin", False):
+        if not getattr(user, "is_admin", False) and allowed_counties:
             count_query = count_query.filter(Voter.county.in_(allowed_counties))
         total = count_query.scalar()
 
