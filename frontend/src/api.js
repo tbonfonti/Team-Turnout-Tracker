@@ -96,21 +96,21 @@ export async function apiLogin(email, password) {
 
 // ==== VOTERS ====
 
-export async function apiSearchVoters(params) {
+export async function apiSearchVoters(qOrParams, page = 1, pageSize = 25, field = "all") {
+  // Support both calling styles:
+  // 1) apiSearchVoters({ q, field, page, pageSize })
+  // 2) apiSearchVoters(q, page, pageSize, field)
+  const params =
+    qOrParams && typeof qOrParams === "object"
+      ? qOrParams
+      : { q: qOrParams, page, pageSize, field };
+
   const url = new URL(`${API_BASE}/voters/`);
 
-  if (params?.q) {
-    url.searchParams.set("q", params.q);
-  }
-  if (params?.field) {
-    url.searchParams.set("field", params.field);
-  }
-  if (params?.page) {
-    url.searchParams.set("page", String(params.page));
-  }
-  if (params?.pageSize) {
-    url.searchParams.set("page_size", String(params.pageSize));
-  }
+  if (params?.q) url.searchParams.set("q", params.q);
+  if (params?.field) url.searchParams.set("field", params.field);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.pageSize) url.searchParams.set("page_size", String(params.pageSize));
 
   return fetchJson(url.toString(), {
     headers: authHeaders(),
