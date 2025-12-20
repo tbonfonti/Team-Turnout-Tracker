@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models import User, Voter, UserVoterTag, Branding, UserCountyAccess
 from app.schemas import BrandingOut, InviteUserRequest, UserOut, CountyAccessUpdate
 from app.deps import get_current_admin
+from app.paths import UPLOADS_DIR
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -22,10 +23,13 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # Helper: ensure uploads directory exists
 # -----------------------------------------------------
 def ensure_uploads_dir():
-    uploads_dir = "uploads"
-    if not os.path.exists(uploads_dir):
-        os.makedirs(uploads_dir)
-    return uploads_dir
+    """Return the uploads directory used for branding/logo uploads.
+
+    This is centralized in app.paths and can be overridden by the UPLOADS_DIR
+    environment variable (recommended for Render Disk deployments).
+    """
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    return UPLOADS_DIR
 
 
 # -----------------------------------------------------
@@ -59,8 +63,9 @@ def create_user(
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=get_password_hash(payload.password),
-        is_admin=payload.is_admin,
+        is_admin=payload.is_admin or False,
     )
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -68,82 +73,124 @@ def create_user(
 
 
 # -----------------------------------------------------
-# Admin: Import voters CSV
+# Admin: Update county access for a user
 # -----------------------------------------------------
-@router.post("/import/voters")
-def import_voters(
+@router.post("/users/{user_id}/county-access", response_model=list[str])
+def update_user_county_access(
+    user_id: int,
+    payload: CountyAccessUpdate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    # Clear existing
+    db.query(UserCountyAccess).filter(UserCountyAccess.user_id == user_id).delete()
+
+    # Add new
+    for county in payload.counties:
+        db.add(UserCountyAccess(user_id=user_id, county=county))
+
+    db.commit()
+    return payload.counties
+
+
+# -----------------------------------------------------
+# Admin: Get all counties present in the voter DB
+# -----------------------------------------------------
+@router.get("/counties", response_model=list[str])
+def list_counties(
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    counties = (
+        db.query(Voter.county)
+        .filter(Voter.county.isnot(None))
+        .group_by(Voter.county)
+        .order_by(func.lower(Voter.county))
+        .all()
+    )
+    return [c[0] for c in counties if c[0]]
+
+
+# -----------------------------------------------------
+# Admin: Upload voters CSV (bulk load)
+# -----------------------------------------------------
+@router.post("/voters/upload")
+def upload_voters_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_admin=Depends(get_current_admin),
 ):
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported")
-
+    # Read CSV into memory
     content = file.file.read().decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(content))
 
-    imported = 0
+    created = 0
     updated = 0
 
     for row in reader:
         voter_id = row.get("voter_id") or row.get("VoterID") or row.get("VOTER_ID")
         if not voter_id:
-            # Skip any rows without a voter_id
             continue
 
         voter = db.query(Voter).filter(Voter.voter_id == voter_id).first()
+
+        # Map fields safely
+        def get_field(*names):
+            for n in names:
+                if n in row and row[n] is not None:
+                    return row[n]
+            return None
+
+        first_name = get_field("first_name", "FirstName", "FIRST_NAME")
+        last_name = get_field("last_name", "LastName", "LAST_NAME")
+        county = get_field("county", "County", "COUNTY")
+        precinct = get_field("precinct", "Precinct", "PRECINCT")
+        has_voted_val = get_field("has_voted", "HasVoted", "HAS_VOTED")
+
+        # Normalize has_voted
+        has_voted = False
+        if isinstance(has_voted_val, str):
+            has_voted = has_voted_val.strip().lower() in ("1", "true", "yes", "y")
+        elif has_voted_val is not None:
+            try:
+                has_voted = bool(int(has_voted_val))
+            except Exception:
+                has_voted = False
+
         if voter:
-            # Update some fields if they exist in the CSV
-            voter.first_name = row.get("first_name") or voter.first_name
-            voter.last_name = row.get("last_name") or voter.last_name
-            voter.address = row.get("address") or voter.address
-            voter.city = row.get("city") or voter.city
-            voter.state = row.get("state") or voter.state
-            voter.zip_code = row.get("zip_code") or voter.zip_code
-            voter.county = row.get("county") or voter.county
-            voter.precinct = row.get("precinct") or voter.precinct
-            voter.registered_party = row.get("registered_party") or voter.registered_party
-            voter.phone = row.get("phone") or voter.phone
-            voter.email = row.get("email") or voter.email
+            # Update existing
+            voter.first_name = first_name or voter.first_name
+            voter.last_name = last_name or voter.last_name
+            voter.county = county or voter.county
+            voter.precinct = precinct or voter.precinct
+            voter.has_voted = has_voted if has_voted_val is not None else voter.has_voted
             updated += 1
         else:
+            # Create new
             voter = Voter(
                 voter_id=voter_id,
-                first_name=row.get("first_name") or "",
-                last_name=row.get("last_name") or "",
-                address=row.get("address"),
-                city=row.get("city"),
-                state=row.get("state"),
-                zip_code=row.get("zip_code"),
-                county=row.get("county"),
-                precinct=row.get("precinct"),
-                registered_party=row.get("registered_party"),
-                phone=row.get("phone"),
-                email=row.get("email"),
+                first_name=first_name,
+                last_name=last_name,
+                county=county,
+                precinct=precinct,
+                has_voted=has_voted,
             )
             db.add(voter)
-            imported += 1
+            created += 1
 
     db.commit()
-
-    return {
-        "imported": imported,
-        "updated": updated,
-    }
+    return {"status": "ok", "created": created, "updated": updated}
 
 
 # -----------------------------------------------------
-# Admin: Import voted CSV
+# Admin: Upload voted CSV (mark has_voted = True)
 # -----------------------------------------------------
-@router.post("/import/voted")
-def import_voted(
+@router.post("/voters/upload-voted")
+def upload_voted_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_admin=Depends(get_current_admin),
 ):
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported")
-
     content = file.file.read().decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(content))
 
@@ -214,12 +261,16 @@ def upload_logo(
         shutil.copyfileobj(file.file, buffer)
 
     # Update or create branding record
+    # IMPORTANT: Store a *URL path*, not a filesystem path.
+    # The backend serves UPLOADS_DIR at /uploads via StaticFiles.
+    public_logo_url = f"/uploads/{new_filename}"
+
     branding = db.query(Branding).first()
     if not branding:
-        branding = Branding(app_name="BOOTS ON THE GROUND", logo_url=f"/{file_path}")
+        branding = Branding(app_name="BOOTS ON THE GROUND", logo_url=public_logo_url)
         db.add(branding)
     else:
-        branding.logo_url = f"/{file_path}"
+        branding.logo_url = public_logo_url
 
     db.commit()
     db.refresh(branding)
@@ -227,138 +278,38 @@ def upload_logo(
 
 
 # -----------------------------------------------------
-# Admin: Tags overview
-# -----------------------------------------------------
-@router.get("/tags/overview", response_model=list[dict])
-def tag_overview(
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
-):
-    """
-    Returns a list of tagged voters for either:
-      - a specific user_id, or
-      - all users if user_id is not provided.
-
-    Each item includes:
-      - user info (id, email, full_name)
-      - voter info (id, voter_id, first/last name, county, precinct, has_voted)
-    """
-    query = db.query(UserVoterTag, User, Voter).join(User, UserVoterTag.user_id == User.id).join(
-        Voter, UserVoterTag.voter_id == Voter.id
-    )
-
-    if user_id is not None:
-        query = query.filter(UserVoterTag.user_id == user_id)
-
-    rows = query.all()
-
-    results = []
-    for tag, user, voter in rows:
-        results.append(
-            {
-                "user_id": user.id,
-                "user_email": user.email,
-                "user_full_name": user.full_name,
-                "voter_internal_id": voter.id,
-                "voter_voter_id": voter.voter_id,
-                "first_name": voter.first_name,
-                "last_name": voter.last_name,
-                "has_voted": voter.has_voted,
-                "county": voter.county,
-                "precinct": voter.precinct,
-            }
-        )
-
-    return results
-
-
-# -----------------------------------------------------
-# Admin: List distinct counties from voter file
-# -----------------------------------------------------
-@router.get("/counties", response_model=List[str])
-def list_counties(
-    db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
-):
-    rows = (
-        db.query(Voter.county)
-        .filter(Voter.county.isnot(None))
-        .filter(func.trim(Voter.county) != "")
-        .distinct()
-        .order_by(Voter.county.asc())
-        .all()
-    )
-    return [r[0] for r in rows]
-
-
-# -----------------------------------------------------
-# Admin: Get a specific user's allowed counties
-# -----------------------------------------------------
-@router.get("/users/{user_id}/county-access", response_model=List[str])
-def get_user_county_access(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
-):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    rows = (
-        db.query(UserCountyAccess)
-        .filter(UserCountyAccess.user_id == user_id)
-        .all()
-    )
-    return [r.county for r in rows]
-
-
-# -----------------------------------------------------
-# Admin: Set a specific user's allowed counties
-# -----------------------------------------------------
-@router.put("/users/{user_id}/county-access", response_model=List[str])
-def update_user_county_access(
-    user_id: int,
-    payload: CountyAccessUpdate,
-    db: Session = Depends(get_db),
-    current_admin=Depends(get_current_admin),
-):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Normalize + de-duplicate
-    allowed: List[str] = []
-    for c in payload.allowed_counties:
-        if c is None:
-            continue
-        c_norm = c.strip()
-        if not c_norm:
-            continue
-        if c_norm not in allowed:
-            allowed.append(c_norm)
-
-    # Wipe old rows
-    db.query(UserCountyAccess).filter(UserCountyAccess.user_id == user_id).delete()
-
-    # Insert new ones
-    for c in allowed:
-        db.add(UserCountyAccess(user_id=user_id, county=c))
-
-    db.commit()
-    return allowed
-
-
-# -----------------------------------------------------
-# Admin: Get Branding
+# Admin: Get branding (app name + logo url)
 # -----------------------------------------------------
 @router.get("/branding", response_model=BrandingOut)
-def get_branding(
+def get_branding_admin(
     db: Session = Depends(get_db),
     current_admin=Depends(get_current_admin),
 ):
     branding = db.query(Branding).first()
     if not branding:
         return BrandingOut(logo_url=None, app_name="BOOTS ON THE GROUND")
+    return branding
 
+
+# -----------------------------------------------------
+# Admin: Update app name
+# -----------------------------------------------------
+@router.post("/branding", response_model=BrandingOut)
+def update_branding_admin(
+    payload: BrandingOut,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    branding = db.query(Branding).first()
+    if not branding:
+        branding = Branding(app_name=payload.app_name or "BOOTS ON THE GROUND", logo_url=payload.logo_url)
+        db.add(branding)
+    else:
+        if payload.app_name is not None:
+            branding.app_name = payload.app_name
+        if payload.logo_url is not None:
+            branding.logo_url = payload.logo_url
+
+    db.commit()
+    db.refresh(branding)
     return branding
