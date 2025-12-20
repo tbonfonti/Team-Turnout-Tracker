@@ -5,13 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .database import Base, engine
-from . import models  # ensure models are imported so tables are registered
+from . import models
 from .routers import auth_routes, voter_routes, admin_routes, tag_routes, branding_routes
-from .paths import UPLOADS_DIR  # shared uploads directory (supports Render Disk)
+from .paths import UPLOADS_DIR  # shared uploads directory
 
-app = FastAPI(title="BOOTS ON THE GROUND")  # <--- Application title
+app = FastAPI(title="BOOTS ON THE GROUND")
 
-# CORS (you can tighten origins later to just your frontend domain)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,18 +19,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve packaged static assets from /static
+# Serve static files (if you use /static for anything)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Serve uploaded assets (logos, etc.) from /uploads
-# NOTE: This must exist on disk and should point at a persistent mount in production.
+# ✅ Serve uploaded files (logos) from the persistent uploads directory
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
-# Create tables if they don't exist yet
 Base.metadata.create_all(bind=engine)
 
-# Routers
 app.include_router(auth_routes.router)
 app.include_router(voter_routes.router)
 app.include_router(admin_routes.router)
