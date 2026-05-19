@@ -54,6 +54,7 @@ export default function AdminPanel() {
   const [loadingTags, setLoadingTags] = useState(false);
 
   const [users, setUsers] = useState([]);
+  const [userSortDirection, setUserSortDirection] = useState("asc");
   const [usersError, setUsersError] = useState(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -333,6 +334,43 @@ export default function AdminPanel() {
     await reloadTagOverview(value);
   };
 
+
+  const getLastNameForSort = (user) => {
+    const fullName = (user?.full_name || "").trim();
+    if (!fullName) return "";
+    const parts = fullName.split(/\s+/);
+    return parts.length > 1 ? parts[parts.length - 1] : parts[0];
+  };
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const aLast = getLastNameForSort(a);
+    const bLast = getLastNameForSort(b);
+
+    const lastNameCompare = aLast.localeCompare(bLast, undefined, {
+      sensitivity: "base",
+    });
+    if (lastNameCompare !== 0) {
+      return userSortDirection === "asc" ? lastNameCompare : -lastNameCompare;
+    }
+
+    const aName = (a?.full_name || a?.email || "").trim();
+    const bName = (b?.full_name || b?.email || "").trim();
+    const fullNameCompare = aName.localeCompare(bName, undefined, {
+      sensitivity: "base",
+    });
+    if (fullNameCompare !== 0) {
+      return userSortDirection === "asc" ? fullNameCompare : -fullNameCompare;
+    }
+
+    return (a?.email || "").localeCompare(b?.email || "", undefined, {
+      sensitivity: "base",
+    });
+  });
+
+  const handleLastNameSortClick = () => {
+    setUserSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+  };
+
   // ----- Render -----
 
   if (!isAdmin) {
@@ -429,6 +467,76 @@ export default function AdminPanel() {
         </form>
       </section>
 
+      {/* User list */}
+      <section style={{ marginBottom: "1.5rem" }}>
+        <h3>Current Users</h3>
+        {usersError && <p style={{ color: "red" }}>{usersError}</p>}
+        {loadingUsers && <p>Loading users…</p>}
+        {!loadingUsers && sortedUsers.length > 0 && (
+          <table
+            style={{
+              borderCollapse: "collapse",
+              width: "100%",
+              maxWidth: "900px",
+            }}
+          >
+            <thead>
+              <tr>
+                <th style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+                  Name
+                </th>
+                <th style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+                  Email
+                </th>
+                <th style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+                  Admin
+                </th>
+                <th style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+                  <button
+                    type="button"
+                    onClick={handleLastNameSortClick}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      margin: 0,
+                      font: "inherit",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      color: "inherit",
+                    }}
+                    aria-label={`Sort users by last name ${
+                      userSortDirection === "asc" ? "descending" : "ascending"
+                    }`}
+                    title={`Sort by last name (${userSortDirection === "asc" ? "A to Z" : "Z to A"})`}
+                  >
+                    Last Name {userSortDirection === "asc" ? "▲" : "▼"}
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedUsers.map((u) => (
+                <tr key={u.id}>
+                  <td style={{ borderBottom: "1px solid #eee", padding: "0.25rem 0.5rem" }}>
+                    {u.full_name || "—"}
+                  </td>
+                  <td style={{ borderBottom: "1px solid #eee", padding: "0.25rem 0.5rem" }}>
+                    {u.email}
+                  </td>
+                  <td style={{ borderBottom: "1px solid #eee", padding: "0.25rem 0.5rem" }}>
+                    {u.is_admin ? "Yes" : "No"}
+                  </td>
+                  <td style={{ borderBottom: "1px solid #eee", padding: "0.25rem 0.5rem" }}>
+                    {getLastNameForSort(u) || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
       {/* County-based voter access */}
       <section style={{ marginBottom: "1.5rem" }}>
         <h3>County Access by User</h3>
@@ -446,7 +554,7 @@ export default function AdminPanel() {
               style={{ marginLeft: "0.5rem" }}
             >
               <option value="">-- choose user --</option>
-              {users.map((u) => (
+              {sortedUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name || u.email}
                 </option>
@@ -627,7 +735,7 @@ export default function AdminPanel() {
               style={{ marginLeft: "0.5rem" }}
             >
               <option value="">All users</option>
-              {users.map((u) => (
+              {sortedUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name || u.email}
                 </option>
