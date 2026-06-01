@@ -20,11 +20,34 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 # -----------------------------------------------------
-# Helper: ensure uploads directory exists
+# Helpers
 # -----------------------------------------------------
 def ensure_uploads_dir():
     os.makedirs(UPLOADS_DIR, exist_ok=True)
     return UPLOADS_DIR
+
+
+def normalize_csv_header(header: Optional[str]) -> str:
+    """Normalize CSV headers so common exports like "Voter ID" work."""
+    if header is None:
+        return ""
+    return "".join(ch for ch in header.lstrip("\ufeff").lower() if ch.isalnum())
+
+
+def clean_csv_value(value: Optional[str]) -> str:
+    """Trim CSV values and remove BOM/non-breaking-space artifacts."""
+    if value is None:
+        return ""
+    return value.replace("\ufeff", "").replace("\xa0", " ").strip()
+
+
+def get_csv_value(row: dict, *accepted_headers: str) -> str:
+    """Return a cleaned value for any accepted header spelling."""
+    accepted = {normalize_csv_header(header) for header in accepted_headers}
+    for key, value in row.items():
+        if normalize_csv_header(key) in accepted:
+            return clean_csv_value(value)
+    return ""
 
 
 # -----------------------------------------------------
@@ -85,7 +108,7 @@ def import_voters(
     updated = 0
 
     for row in reader:
-        voter_id = row.get("voter_id") or row.get("VoterID") or row.get("VOTER_ID")
+        voter_id = get_csv_value(row, "voter_id", "VoterID", "VOTER_ID", "Voter ID")
         if not voter_id:
             # Skip any rows without a voter_id
             continue
@@ -150,7 +173,7 @@ def import_voted(
     not_found = 0
 
     for row in reader:
-        voter_id = row.get("voter_id") or row.get("VoterID") or row.get("VOTER_ID")
+        voter_id = get_csv_value(row, "voter_id", "VoterID", "VOTER_ID", "Voter ID")
         if not voter_id:
             continue
 
