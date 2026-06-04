@@ -198,6 +198,13 @@ export async function apiDeleteAllVoters() {
   });
 }
 
+export async function apiResetVotedStatuses() {
+  return fetchJson(`${API_BASE}/admin/voters/reset-voted`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+}
+
 // ==== ADMIN: USER MANAGEMENT ====
 
 export async function apiInviteUser(email, fullName, password, isAdmin) {

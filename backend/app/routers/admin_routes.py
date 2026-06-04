@@ -193,6 +193,26 @@ def import_voted(
 
 
 # -----------------------------------------------------
+# Admin: Reset voted statuses
+# -----------------------------------------------------
+@router.post("/voters/reset-voted")
+def reset_voted_statuses(
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    updated = db.query(Voter).filter(Voter.has_voted.is_(True)).update(
+        {Voter.has_voted: False}, synchronize_session=False
+    )
+    db.commit()
+
+    return {
+        "status": "ok",
+        "message": "Voted list reset. All voters are marked No.",
+        "updated_voters": updated,
+    }
+
+
+# -----------------------------------------------------
 # Admin: Delete all voters
 # -----------------------------------------------------
 @router.delete("/voters")

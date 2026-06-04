@@ -4,6 +4,7 @@ import {
   apiImportVoters,
   apiImportVoted,
   apiDeleteAllVoters,
+  apiResetVotedStatuses,
   apiInviteUser,
   apiUploadLogo,
   apiGetMe,
@@ -41,6 +42,11 @@ export default function AdminPanel() {
   const [deleteVotersResult, setDeleteVotersResult] = useState(null);
   const [deleteVotersError, setDeleteVotersError] = useState(null);
   const [deleteVotersLoading, setDeleteVotersLoading] = useState(false);
+
+  // Reset voted statuses
+  const [resetVotedResult, setResetVotedResult] = useState(null);
+  const [resetVotedError, setResetVotedError] = useState(null);
+  const [resetVotedLoading, setResetVotedLoading] = useState(false);
 
   // Logo upload
   const [logoFile, setLogoFile] = useState(null);
@@ -275,6 +281,32 @@ export default function AdminPanel() {
     } finally {
       setImportVotedLoading(false);
       e.target.value = "";
+    }
+  };
+
+  // ----- Handler: Reset voted statuses -----
+  const handleResetVotedStatuses = async () => {
+    if (
+      !window.confirm(
+        "Reset the voted list and mark every voter as \"No\"? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    setResetVotedLoading(true);
+    setResetVotedError(null);
+    setResetVotedResult(null);
+    try {
+      const res = await apiResetVotedStatuses();
+      setResetVotedResult(
+        res || { message: "Voted list reset. All voters are marked No." }
+      );
+      await reloadTagOverview(selectedUserId);
+    } catch (err) {
+      setResetVotedError(err.message || "Failed to reset voted list");
+    } finally {
+      setResetVotedLoading(false);
     }
   };
 
@@ -670,17 +702,51 @@ export default function AdminPanel() {
         )}
       </section>
 
-      {/* Danger zone: delete voters */}
+      {/* Danger zone: reset voted statuses or delete voters */}
       <section style={{ marginBottom: "1.5rem" }}>
         <h3>Danger Zone</h3>
-        <button
-          type="button"
-          onClick={handleDeleteAllVoters}
-          disabled={deleteVotersLoading}
-          style={{ backgroundColor: "#b00020", color: "white", padding: "0.5rem 1rem" }}
-        >
-          {deleteVotersLoading ? "Deleting..." : "Delete All Voters"}
-        </button>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={handleResetVotedStatuses}
+            disabled={resetVotedLoading}
+            style={{
+              backgroundColor: "#b85c00",
+              color: "white",
+              padding: "0.5rem 1rem",
+            }}
+          >
+            {resetVotedLoading ? "Resetting..." : 'Reset Voted List to "No"'}
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteAllVoters}
+            disabled={deleteVotersLoading}
+            style={{
+              backgroundColor: "#b00020",
+              color: "white",
+              padding: "0.5rem 1rem",
+            }}
+          >
+            {deleteVotersLoading ? "Deleting..." : "Delete All Voters"}
+          </button>
+        </div>
+        <p style={{ marginTop: "0.5rem", maxWidth: "42rem" }}>
+          Resetting the voted list keeps voters and tags in place, but marks every
+          voter as not having voted.
+        </p>
+        {resetVotedError && (
+          <p style={{ color: "red", marginTop: "0.5rem" }}>
+            {resetVotedError}
+          </p>
+        )}
+        {resetVotedResult && (
+          <p style={{ color: "green", marginTop: "0.5rem" }}>
+            {resetVotedResult.message || "Voted list reset."}
+            {typeof resetVotedResult.updated_voters === "number" &&
+              ` (${resetVotedResult.updated_voters} voters updated.)`}
+          </p>
+        )}
         {deleteVotersError && (
           <p style={{ color: "red", marginTop: "0.5rem" }}>
             {deleteVotersError}
