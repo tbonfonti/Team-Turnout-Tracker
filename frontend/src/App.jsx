@@ -16,6 +16,7 @@ export default function App() {
   });
   const [taggedIds, setTaggedIds] = useState(new Set());
   const [hasAcceptedTos, setHasAcceptedTos] = useState(false);
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
 
   const apiBase = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
@@ -134,10 +135,14 @@ export default function App() {
         {/* User logged in AND has accepted ToS -> show main app */}
         {user && hasAcceptedTos && (
           <>
-            <Dashboard />
+            <Dashboard refreshKey={dashboardRefreshKey} />
             <VoterSearch taggedIds={taggedIds} setTaggedIds={setTaggedIds} />
             {/* Backend enforces admin rights; non-admins will get 403 on admin APIs */}
-            <AdminPanel />
+            <AdminPanel
+              onVotedStatusesReset={() =>
+                setDashboardRefreshKey((current) => current + 1)
+              }
+            />
           </>
         )}
       </main>

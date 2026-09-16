@@ -15,7 +15,7 @@ import {
   apiUpdateUserCountyAccess,
 } from "../api";
 
-export default function AdminPanel() {
+export default function AdminPanel({ onVotedStatusesReset }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -303,6 +303,7 @@ export default function AdminPanel() {
         res || { message: "Voted list reset. All voters are marked No." }
       );
       await reloadTagOverview(selectedUserId);
+      onVotedStatusesReset?.();
     } catch (err) {
       setResetVotedError(err.message || "Failed to reset voted list");
     } finally {
@@ -709,6 +710,7 @@ export default function AdminPanel() {
           <button
             type="button"
             onClick={handleResetVotedStatuses}
+            disabled={resetVotedLoading || deleteVotersLoading}
             disabled={resetVotedLoading}
             style={{
               backgroundColor: "#b85c00",
@@ -721,6 +723,7 @@ export default function AdminPanel() {
           <button
             type="button"
             onClick={handleDeleteAllVoters}
+            disabled={deleteVotersLoading || resetVotedLoading}
             disabled={deleteVotersLoading}
             style={{
               backgroundColor: "#b00020",

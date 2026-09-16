@@ -200,6 +200,12 @@ def reset_voted_statuses(
     db: Session = Depends(get_db),
     current_admin=Depends(get_current_admin),
 ):
+    voted_count = (
+        db.query(func.count(Voter.id))
+        .filter(Voter.has_voted.is_(True))
+        .scalar()
+    )
+    db.query(Voter).update(
     updated = db.query(Voter).filter(Voter.has_voted.is_(True)).update(
         {Voter.has_voted: False}, synchronize_session=False
     )
@@ -208,6 +214,7 @@ def reset_voted_statuses(
     return {
         "status": "ok",
         "message": "Voted list reset. All voters are marked No.",
+        "updated_voters": voted_count,
         "updated_voters": updated,
     }
 

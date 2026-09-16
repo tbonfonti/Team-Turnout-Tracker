@@ -6,7 +6,7 @@ import {
   apiUpdateTaggedVoterContact,
 } from "../api";
 
-export default function Dashboard() {
+export default function Dashboard({ refreshKey = 0 }) {
   const [voters, setVoters] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+  }, [refreshKey]);
 
   const total = voters.length;
   const votedCount = voters.filter((v) => v.has_voted).length;
