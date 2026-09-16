@@ -711,6 +711,7 @@ export default function AdminPanel({ onVotedStatusesReset }) {
             type="button"
             onClick={handleResetVotedStatuses}
             disabled={resetVotedLoading || deleteVotersLoading}
+            disabled={resetVotedLoading}
             style={{
               backgroundColor: "#b85c00",
               color: "white",
@@ -723,6 +724,7 @@ export default function AdminPanel({ onVotedStatusesReset }) {
             type="button"
             onClick={handleDeleteAllVoters}
             disabled={deleteVotersLoading || resetVotedLoading}
+            disabled={deleteVotersLoading}
             style={{
               backgroundColor: "#b00020",
               color: "white",

@@ -206,6 +206,7 @@ def reset_voted_statuses(
         .scalar()
     )
     db.query(Voter).update(
+    updated = db.query(Voter).filter(Voter.has_voted.is_(True)).update(
         {Voter.has_voted: False}, synchronize_session=False
     )
     db.commit()
@@ -214,6 +215,7 @@ def reset_voted_statuses(
         "status": "ok",
         "message": "Voted list reset. All voters are marked No.",
         "updated_voters": voted_count,
+        "updated_voters": updated,
     }
 
 
