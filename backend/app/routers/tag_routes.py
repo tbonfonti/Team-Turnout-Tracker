@@ -115,14 +115,7 @@ def get_dashboard(
 
     if user.is_admin:
         # Admins see all tagged voters
-        voters = (
-        db.query(Voter)
-        .filter(
-            Voter.id.in_(voter_ids),
-            Voter.has_voted.is_(False),
-        )
-        .all()
-    )
+        voters = db.query(Voter).filter(Voter.id.in_(voter_ids)).all()
     else:
         # Restrict tagged voters to allowed counties
         allowed_rows = (
@@ -211,7 +204,14 @@ def export_tags(
         )
         return resp
 
-    voters = db.query(Voter).filter(Voter.id.in_(voter_ids)).all()
+    voters = (
+        db.query(Voter)
+        .filter(
+            Voter.id.in_(voter_ids),
+            Voter.has_voted.is_(False),
+        )
+        .all()
+    )
 
     output = io.StringIO()
     writer = csv.writer(output)
