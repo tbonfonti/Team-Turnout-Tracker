@@ -115,7 +115,14 @@ def get_dashboard(
 
     if user.is_admin:
         # Admins see all tagged voters
-        voters = db.query(Voter).filter(Voter.id.in_(voter_ids)).all()
+        voters = (
+        db.query(Voter)
+        .filter(
+            Voter.id.in_(voter_ids),
+            Voter.has_voted.is_(False),
+        )
+        .all()
+    )
     else:
         # Restrict tagged voters to allowed counties
         allowed_rows = (
